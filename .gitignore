@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Android APKs
+*.apk
+*.apks
+*.xapk
+
+# Signing keys
+*.jks
+*.keystore
+*.p12
+*.pfx
+
+# Temporary files
+*.tmp
+*.log
+
+# IDE
+.vscode/
+.idea/
