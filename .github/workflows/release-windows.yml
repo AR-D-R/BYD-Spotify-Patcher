@@ -1,8 +1,10 @@
 name: Build Windows Release
 
 on:
+  # Allows you to test the build manually from GitHub → Actions
   workflow_dispatch:
 
+  # Automatically creates a public release when you push a tag such as v0.4.1
   push:
     tags:
       - "v*"
@@ -17,101 +19,254 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      # ------------------------------------------------------------
+      # Get repository source
+      # ------------------------------------------------------------
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
+      # ------------------------------------------------------------
+      # Python
+      # ------------------------------------------------------------
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      # ------------------------------------------------------------
+      # Full JDK required because build_portable_windows.ps1 uses jlink
+      # ------------------------------------------------------------
       - name: Set up JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
 
+      # ------------------------------------------------------------
+      # Show environment for troubleshooting
+      # ------------------------------------------------------------
       - name: Show environment
         shell: pwsh
         run: |
+          Write-Host "Python:"
           python --version
+
+          Write-Host ""
+          Write-Host "Java:"
           java -version
+
+          Write-Host ""
           Write-Host "JAVA_HOME=$env:JAVA_HOME"
           Write-Host "ANDROID_HOME=$env:ANDROID_HOME"
           Write-Host "ANDROID_SDK_ROOT=$env:ANDROID_SDK_ROOT"
 
+          Write-Host ""
+          Write-Host "JDK jmods available:"
+          Test-Path "$env:JAVA_HOME\jmods"
+
+      # ------------------------------------------------------------
+      # Android SDK / apksigner
+      # GitHub Windows runners normally already include Android SDK.
+      # ------------------------------------------------------------
       - name: Check Android Build Tools
         shell: pwsh
         run: |
           if (-not $env:ANDROID_HOME) {
-            throw "ANDROID_HOME is not available on this runner."
+            throw "ANDROID_HOME is not available on this GitHub runner."
           }
 
           $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
+
           "ANDROID_SDK_ROOT=$env:ANDROID_HOME" |
             Out-File -FilePath $env:GITHUB_ENV -Append
 
-          Write-Host "Installed build-tools:"
-          Get-ChildItem "$env:ANDROID_HOME\build-tools" -Directory
+          Write-Host "Android SDK:"
+          Write-Host $env:ANDROID_HOME
 
+          Write-Host ""
+          Write-Host "Installed Android Build Tools:"
+
+          if (Test-Path "$env:ANDROID_HOME\build-tools") {
+            Get-ChildItem "$env:ANDROID_HOME\build-tools" -Directory |
+              Sort-Object Name -Descending |
+              Select-Object Name
+          }
+          else {
+            throw "Android build-tools directory was not found."
+          }
+
+      # ------------------------------------------------------------
+      # Python packages needed to build the patcher
+      # ------------------------------------------------------------
       - name: Install Python build dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install pyinstaller
 
+          if (Test-Path ".\requirements.txt") {
+            python -m pip install -r requirements.txt
+          }
+
+          python -m pip install --upgrade pyinstaller cryptography pillow
+
+      # ------------------------------------------------------------
+      # Build self-contained Windows EXE
+      # ------------------------------------------------------------
       - name: Build portable EXE
         shell: pwsh
         run: |
           Set-ExecutionPolicy -Scope Process Bypass
+
           .\build_portable_windows.ps1
 
-      - name: Prepare release files
+          if (-not (Test-Path ".\dist\BYDSpotifyPatcher.exe")) {
+            throw "Build completed but dist\BYDSpotifyPatcher.exe was not found."
+          }
+
+          Write-Host ""
+          Write-Host "Portable EXE successfully created:"
+          Get-Item ".\dist\BYDSpotifyPatcher.exe" |
+            Select-Object Name, Length, LastWriteTime
+
+      # ------------------------------------------------------------
+      # Package the EXE inside a ZIP.
+      #
+      # Manual build:
+      #   BYDSpotifyPatcher-dev-Windows-x64.zip
+      #
+      # Tagged release:
+      #   BYDSpotifyPatcher-v0.4.1-Windows-x64.zip
+      # ------------------------------------------------------------
+      - name: Prepare release package
         shell: pwsh
         run: |
           $Version = "${{ github.ref_name }}"
 
+          # workflow_dispatch on main gives ref_name = main.
+          # Call manual builds "dev" instead.
           if (-not $Version -or $Version -eq "main") {
             $Version = "dev"
           }
 
-          $ExeName = "BYDSpotifyPatcher-$Version-Windows-x64.exe"
+          $FolderName = "BYDSpotifyPatcher-$Version-Windows-x64"
+          $ZipName = "$FolderName.zip"
 
+          Write-Host "Version: $Version"
+          Write-Host "Package folder: $FolderName"
+          Write-Host "ZIP: $ZipName"
+
+          # Clean any previous packaging directory
+          if (Test-Path ".\$FolderName") {
+            Remove-Item ".\$FolderName" -Recurse -Force
+          }
+
+          if (Test-Path ".\$ZipName") {
+            Remove-Item ".\$ZipName" -Force
+          }
+
+          New-Item `
+            -ItemType Directory `
+            -Path ".\$FolderName" `
+            -Force | Out-Null
+
+          # Main executable
           Copy-Item `
             ".\dist\BYDSpotifyPatcher.exe" `
-            ".\$ExeName"
+            ".\$FolderName\BYDSpotifyPatcher.exe"
 
+          # Documentation
+          if (Test-Path ".\README.md") {
+            Copy-Item `
+              ".\README.md" `
+              ".\$FolderName\README.md"
+          }
+
+          if (Test-Path ".\THIRD_PARTY_NOTICES.md") {
+            Copy-Item `
+              ".\THIRD_PARTY_NOTICES.md" `
+              ".\$FolderName\THIRD_PARTY_NOTICES.md"
+          }
+
+          if (Test-Path ".\LICENSE") {
+            Copy-Item `
+              ".\LICENSE" `
+              ".\$FolderName\LICENSE"
+          }
+
+          if (Test-Path ".\CHANGELOG.md") {
+            Copy-Item `
+              ".\CHANGELOG.md" `
+              ".\$FolderName\CHANGELOG.md"
+          }
+
+          # Create ZIP
+          Compress-Archive `
+            -Path ".\$FolderName\*" `
+            -DestinationPath ".\$ZipName" `
+            -CompressionLevel Optimal `
+            -Force
+
+          if (-not (Test-Path ".\$ZipName")) {
+            throw "ZIP package creation failed."
+          }
+
+          # SHA256 of the downloadable ZIP
           $Hash = (
-            Get-FileHash ".\$ExeName" -Algorithm SHA256
+            Get-FileHash ".\$ZipName" -Algorithm SHA256
           ).Hash.ToLower()
 
-          "$Hash  $ExeName" |
+          "$Hash  $ZipName" |
             Out-File ".\SHA256SUMS.txt" -Encoding ascii
 
-          "RELEASE_EXE=$ExeName" |
+          # Pass names to following workflow steps
+          "RELEASE_ZIP=$ZipName" |
+            Out-File -FilePath $env:GITHUB_ENV -Append
+
+          "RELEASE_VERSION=$Version" |
             Out-File -FilePath $env:GITHUB_ENV -Append
 
           Write-Host ""
-          Write-Host "Release binary:"
-          Write-Host $ExeName
+          Write-Host "Release package created:"
+          Get-Item ".\$ZipName" |
+            Select-Object Name, Length
+
           Write-Host ""
           Write-Host "SHA256:"
           Write-Host $Hash
 
+          Write-Host ""
+          Write-Host "Contents:"
+          Get-ChildItem ".\$FolderName" |
+            Select-Object Name, Length
+
+      # ------------------------------------------------------------
+      # GitHub build provenance / attestation
+      # ------------------------------------------------------------
       - name: Generate build provenance
         uses: actions/attest@v4
         with:
-          subject-path: ${{ env.RELEASE_EXE }}
+          subject-path: ${{ env.RELEASE_ZIP }}
 
+      # ------------------------------------------------------------
+      # Always keep the result as an Actions artifact.
+      # Useful for testing manual/dev builds.
+      # ------------------------------------------------------------
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: BYDSpotifyPatcher-Windows
           path: |
-            ${{ env.RELEASE_EXE }}
+            ${{ env.RELEASE_ZIP }}
             SHA256SUMS.txt
+          if-no-files-found: error
 
+      # ------------------------------------------------------------
+      # Create a public GitHub Release ONLY when triggered by a tag.
+      #
+      # Example:
+      #   git tag v0.4.1
+      #   git push origin v0.4.1
+      # ------------------------------------------------------------
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
@@ -119,7 +274,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ github.ref_name }}" `
-            "${{ env.RELEASE_EXE }}" `
+            "${{ env.RELEASE_ZIP }}" `
             "SHA256SUMS.txt" `
             --title "BYD Spotify Patcher ${{ github.ref_name }}" `
             --generate-notes
