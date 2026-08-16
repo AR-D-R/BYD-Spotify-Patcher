@@ -52,7 +52,7 @@ Click **ANALYSE APK**, then **PATCH + SIGN**.
 
 ![Select Spotify APK](docs/images/Step4.jpg)
 
-![Select Spotify APK2](docs/images/Step5.jpg)
+![Select Spotify APK_2](docs/images/Step5.jpg)
 
 ### 6. Install SpotifyPlus
 
