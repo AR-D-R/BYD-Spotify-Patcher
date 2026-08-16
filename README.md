@@ -3,7 +3,14 @@
 Unofficial Windows tool for creating a BYD-friendly SpotifyPlus APK
 from a user-supplied Spotify APK.
 
-> This project is not affiliated with Spotify or BYD.
+A copy of the original APK is available from APKMirror:
+
+- Spotify version: 8.9.76.538
+- Version code: 119017142
+- Package: com.spotify.music
+- Variant: Universal / nodpi APK
+
+https://www.apkmirror.com/apk/spotify-ab/spotify/spotify-music-and-podcasts-8-9-76-538-release/spotify-music-and-podcasts-8-9-76-538-2-android-apk-download/
 
 ## What it does
 
@@ -18,3 +25,4 @@ from a user-supplied Spotify APK.
 
 This repository does not contain or distribute Spotify APKs.
 Users must supply their own compatible Spotify APK.
+This project is not affiliated with Spotify or BYD.
