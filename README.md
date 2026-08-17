@@ -7,10 +7,9 @@ It creates separately installable Spotify instances that can coexist with BYD's 
 The patcher does **not** contain or download Spotify. The original APK is supplied by the user and patched locally on their PC.
 
 ## Features
-
-* Can produce two separate Spotify instances that can be installed alongside BYD's factory Spotify.
-* Uses different Spotify accounts in each instance.
-* Automatically restores playback after the BYD infotainment system restarts.
+* Allows to use fully functional Spotify app within BYD infotainment system. (DJ X, sorting playlists by genre, easy to start radio from a song, albums, lyrics, artists information, etc.)
+* Can generate up to 2 separate Spotify instances that can be installed alongside BYD's factory Spotify. User1 can use SpotifyPlus A logged into User1 account and User2 can use SpotifyPlus B logged into User 2 Spotify account.
+* Similar to the OEM version a patched app will automatically restore playback after the BYD infotainment system restarts.
 * **Left (LHD)** and **Right (RHD)** wide-screen layouts.
 * Custom visible app name. SpotifyPlus as default.
 * Adjustable launcher-icon colour with live preview.
