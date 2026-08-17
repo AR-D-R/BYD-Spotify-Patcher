@@ -6,32 +6,16 @@ It creates separately installable Spotify instances that can coexist with BYD's 
 
 The patcher does **not** contain or download Spotify. The original APK is supplied by the user and patched locally on their PC.
 
-## Screenshots
-
-![BYD Spotify Patcher](docs/patcher-main.png)
-
-![BYD Spotify Patcher on BYD infotainment](docs/patcher-byd.png)
-
 ## Features
 
-* Install **two separate Spotify instances** alongside BYD's factory Spotify.
+* Can produce two separate Spotify instances that can be installed alongside BYD's factory Spotify.
 * Use different Spotify accounts in each instance.
 * Automatically restores playback after the BYD infotainment system restarts.
 * **Left (LHD)** and **Right (RHD)** wide-screen layouts.
-* Custom visible app name.
+* Custom visible app name. SpotifyPlus as default.
 * Adjustable launcher-icon colour with live preview.
+* Applies larger text and wide-screen UI adjustments
 * Automatic APK patching, signing and verification.
-
-### App instances
-
-| Instance  | Internal package    | Default name    | Output        |
-| --------- | ------------------- | --------------- | ------------- |
-| Primary   | `com.spotify.musib` | `SpotifyPlus`   | `*_BYD.apk`   |
-| Secondary | `com.spotify.musia` | `SpotifyPlus-S` | `*_BYD_S.apk` |
-
-Both instances have been tested successfully on BYD infotainment and can be installed together.
-
-If one of the patched Spotify apps was playing when the vehicle was shut down, that same instance resumes playback after the infotainment system starts again.
 
 ## Supported Spotify version
 
@@ -52,42 +36,31 @@ Other Spotify versions are rejected by **ANALYSE APK** rather than being patched
 Windows may show a security warning because the patcher is not code-signed with a commercial certificate. This is expected for an independently distributed open-source tool and does not mean Windows has detected malware.
 If SmartScreen appears, click More info and then Run anyway.
 
-![BYD Spotify Patcher](docs/Step1.jpg)
-![BYD Spotify Patcher2](docs/Step2.jpg)
-![BYD Spotify Patcher3](docs/Step3.jpg)
+![BYD Spotify Patcher](docs/images/Step1.jpg)
+![BYD Spotify Patcher2](docs/images/Step2.jpg)
+![BYD Spotify Patcher3](docs/images/Step3.jpg)
 
 4. Select the original Spotify APK.
 5. Choose **Primary** or **Secondary**.
 6. Optionally change the visible app name and icon colour.
 7. Choose **Left (LHD)** or **Right (RHD)**.
-8. Click **ANALYSE APK**.
-![BYD Spotify Patcher4](docs/Step4.jpg)
-
-9. If the APK is supported, click **PATCH + SIGN**.
-
-![BYD Spotify Patcher5](docs/Step5.jpg)
-
-10. Install the generated APK on the BYD infotainment system.
-
-![BYD Spotify Patcher6](docs/Step6.jpg)
-![BYD Spotify Patcher7](docs/Step7.jpg)
-
-The patched apps can coexist with each other and with BYD's original `com.spotify.music` installation.
-
-## Wide-screen layout
-
-Choose the layout that suits the vehicle:
 
 * **Left (LHD)** — navigation and mini-player remain on the left.
 * **Right (RHD)** — navigation and mini-player are moved to the right while Spotify content remains left-to-right.
 
-The layout is selected when creating the APK.
+8. Click **ANALYSE APK**.
+![BYD Spotify Patcher4](docs/images/Step4.jpg)
 
-## Launcher icon
+9. If the APK is supported, click **PATCH + SIGN**.
 
-The patched Spotify icon includes a small **+** mark.
+![BYD Spotify Patcher5](docs/images/Step5.jpg)
 
-Its colour can be adjusted from **0–359°** to make Primary and Secondary easier to distinguish. The patcher shows a live preview before creating the APK.
+10. Install the generated APK on the BYD infotainment system.
+
+![BYD Spotify Patcher6](docs/images/Step6.jpg)
+![BYD Spotify Patcher7](docs/images/Step7.jpg)
+
+The patched apps can coexist with each other and with BYD's original `com.spotify.music` installation.
 
 ## Playback restore
 
@@ -100,8 +73,6 @@ If a patched Spotify instance was playing before the vehicle was shut down, that
 The current self-contained Windows version is available from:
 
 **[GitHub Releases](../../releases/latest)**
-
-No Python, Java, Android Studio or Android SDK is required to use the released Windows version.
 
 ## Notes
 
