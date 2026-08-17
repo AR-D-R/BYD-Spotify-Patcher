@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-Write-Host 'BYD Spotify Patcher v0.4 single-file portable Windows build'
+Write-Host 'BYD Spotify Patcher v0.5.2 single-file portable Windows build'
 Write-Host 'Android SDK / Android Studio are needed only on this BUILD PC.'
 Write-Host 'The resulting BYDSpotifyPatcher.exe contains apksigner + a minimal Java runtime.'
 
@@ -32,18 +32,40 @@ if (!$ApkSignerJar) {
 }
 Write-Host "Using apksigner: $ApkSignerJar"
 
-# 2) Locate a full JDK / Android Studio JBR with jdeps + jlink.
+# 2) Locate a full JDK with jdeps + jlink + jmods.
+# Android Studio JBR can contain java/jdeps/jlink but omit the jmods image needed
+# by jlink, so prefer a normal JDK (Temurin 21 works well).
 $JavaHomes = @()
 if ($env:JAVA_HOME) { $JavaHomes += $env:JAVA_HOME }
+
+$JdkRoots = @(
+    'C:\Program Files\Eclipse Adoptium',
+    'C:\Program Files\Microsoft',
+    'C:\Program Files\Java'
+)
+foreach ($root in $JdkRoots) {
+    if (Test-Path $root) {
+        $JavaHomes += Get-ChildItem $root -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like 'jdk*' } |
+            Sort-Object Name -Descending |
+            ForEach-Object { $_.FullName }
+    }
+}
+
+# Keep Android Studio locations as a last-resort candidate only if they are full
+# enough to contain jmods\java.base.jmod.
 $JavaHomes += 'C:\Program Files\Android\Android Studio\jbr'
 $JavaHomes += 'C:\Program Files\Android\Android Studio\jre'
+$JavaHomes = $JavaHomes | Select-Object -Unique
+
 $JavaHome = $JavaHomes | Where-Object {
     (Test-Path (Join-Path $_ 'bin\java.exe')) -and
     (Test-Path (Join-Path $_ 'bin\jdeps.exe')) -and
-    (Test-Path (Join-Path $_ 'bin\jlink.exe'))
+    (Test-Path (Join-Path $_ 'bin\jlink.exe')) -and
+    (Test-Path (Join-Path $_ 'jmods\java.base.jmod'))
 } | Select-Object -First 1
 if (!$JavaHome) {
-    throw 'Could not find Java with java.exe + jdeps.exe + jlink.exe. Android Studio JBR is recommended.'
+    throw 'Could not find a full JDK with java.exe, jdeps.exe, jlink.exe and jmods\java.base.jmod. Install a full JDK (Temurin 21 recommended) or set JAVA_HOME to it.'
 }
 $Jdeps = Join-Path $JavaHome 'bin\jdeps.exe'
 $Jlink = Join-Path $JavaHome 'bin\jlink.exe'

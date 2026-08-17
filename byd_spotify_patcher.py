@@ -1,29 +1,25 @@
 #!/usr/bin/env python3
-"""BYD Spotify Patcher v0.4.
+"""BYD Spotify Patcher v0.5.3.
 
-Patches a user-supplied, normal Spotify APK so it can coexist with a factory
-``com.spotify.music`` installation on BYD Android infotainment.
+Patches a user-supplied Spotify 8.9.76.538 APK so multiple fixed clone
+identities can coexist with BYD's factory ``com.spotify.music`` installation.
 
 The tool never downloads or bundles Spotify. It only transforms an APK selected
 by the user on their own computer.
 
-Core coexistence strategy used by the Spotify 8.9.76.538 BYD profile:
-* alternate package/process name ``com.spotify.musib`` (same length and DEX-sort safe)
-* binary AndroidManifest identity/provider/permission patching in-place
+Core patch profile:
+* fixed primary/secondary package identities (musib / musia)
+* binary manifest identity/provider/permission patching in-place
 * package-scoped resources.arsc provider authority patching
 * exact DEX package/process string patching plus DEX SHA-1/Adler32 repair
 * preserve META-INF/services; remove only obsolete signature metadata
-* construct a 4-byte aligned APK
-* generate/reuse a per-user signing key and sign with Android apksigner
+* stable v9 Left and v14 Right BYD wide-screen UI profiles
+* editable visible app label plus optional launcher-icon hue shift
+* proven BYD RESTORE_PLAYBACK MediaBrowser auto-resume helper (logic unchanged)
+* construct a 4-byte aligned APK and sign with a reusable per-user key
 
-v0.4 adds two proven BYD wide-screen UI profiles for Spotify 8.9.76.538:
-* Left panel (LHD): the stable v9 compact/larger-text layout
-* Right panel (RHD): the stable v14 right-side panel with LTR content
-
-Both profiles keep the coexistence clone, SpotifyPlus branding, and the proven
-BYD RESTORE_PLAYBACK MediaBrowser auto-resume helper. Signing remains automatic.
-The v0.4 public patch profile is intentionally strict and refuses other Spotify
-versions instead of producing an untested build.
+Both supported clone identities, ``com.spotify.musib`` and ``com.spotify.musia``,
+pass the tested DEX lexical-order checks.
 """
 from __future__ import annotations
 
@@ -50,7 +46,7 @@ from typing import Callable
 
 from PIL import Image, ImageDraw
 
-APP_VERSION = "0.4"
+APP_VERSION = "0.5.3"
 SUPPORTED_SPOTIFY_VERSION = "8.9.76.538"
 SUPPORTED_SPOTIFY_VERSION_CODE = 119017142
 WIDE_LAYOUT_PATH = "res/layout-w600dp-v13/adaptive_main.xml"
@@ -58,7 +54,26 @@ WIDE_LAYOUT_BASE_SHA256 = "9e25d64fdfd097a1fe544af86439fe674942911fc7f6a12a2ea99
 PANEL_LEFT = "left"
 PANEL_RIGHT = "right"
 OLD_PKG = "com.spotify.music"
-NEW_PKG = "com.spotify.musib"  # same length; DEX sort-safe for tested builds
+NEW_PKG = "com.spotify.musib"  # primary/default package; same length as OLD_PKG
+INSTANCE_PRIMARY = "primary"
+INSTANCE_SECONDARY = "secondary"
+MAX_APP_LABEL_LEN = 24
+INSTANCE_CONFIG = {
+    INSTANCE_PRIMARY: {
+        "title": "Primary",
+        "package": "com.spotify.musib",
+        "label": "SpotifyPlus",
+        "output_suffix": "",
+        "hue": 0,
+    },
+    INSTANCE_SECONDARY: {
+        "title": "Secondary",
+        "package": "com.spotify.musia",
+        "label": "SpotifyPlus-S",
+        "output_suffix": "_S",
+        "hue": 110,
+    },
+}
 
 KNOWN_MANIFEST_EXACT = [
     OLD_PKG,
@@ -77,13 +92,7 @@ KNOWN_MANIFEST_EXACT = [
     OLD_PKG + ".sso.afterlogindummytask",
 ]
 
-SPECIAL_MANIFEST_REPLACEMENTS = {
-    "androidx.car.app.connection": "musibxxx.car.app.connection",
-}
-
-RESOURCE_REPLACEMENTS = {
-    b"com.spotify.mobile.android.mediaapi": b"com.spotify.musib.android.mediaapi_",
-}
+RESOURCE_AUTHORITY_OLD = b"com.spotify.mobile.android.mediaapi"
 
 # Tiny helper DEX payloads contain only BYD Spotify Patcher code, never Spotify code.
 # They are embedded so the public patcher remains a single-source application.
@@ -109,6 +118,45 @@ DEX_MAGIC_PREFIX = b"dex\n"
 
 class PatchError(RuntimeError):
     pass
+
+
+def get_instance_config(instance: str) -> dict:
+    key = (instance or INSTANCE_PRIMARY).lower().strip()
+    if key not in INSTANCE_CONFIG:
+        raise PatchError(f"Unknown app instance: {instance!r}")
+    return INSTANCE_CONFIG[key]
+
+
+def validate_app_label(label: str) -> str:
+    label = (label or "").strip()
+    if not label:
+        raise PatchError("App display name cannot be empty")
+    if len(label) > MAX_APP_LABEL_LEN:
+        raise PatchError(f"App display name must be {MAX_APP_LABEL_LEN} characters or fewer")
+    if any(ch in label for ch in "\r\n\x00"):
+        raise PatchError("App display name cannot contain line breaks or NUL characters")
+    return label
+
+
+def normalise_hue(value: int | float) -> int:
+    try:
+        return int(round(float(value))) % 360
+    except (TypeError, ValueError) as e:
+        raise PatchError("Icon hue must be a number from 0 to 359 degrees") from e
+
+
+def _resource_replacements(new_pkg: str) -> dict[bytes, bytes]:
+    if len(new_pkg) != len(OLD_PKG):
+        raise PatchError("Alternate package must be the same length as com.spotify.music")
+    new = (new_pkg + ".android.mediaapi_").encode("ascii")
+    if len(new) != len(RESOURCE_AUTHORITY_OLD):
+        raise PatchError("Generated media-api provider authority has the wrong length")
+    return {RESOURCE_AUTHORITY_OLD: new}
+
+
+def _special_manifest_replacements(new_pkg: str) -> dict[str, str]:
+    leaf = new_pkg.rsplit(".", 1)[-1]
+    return {"androidx.car.app.connection": f"{leaf}xxx.car.app.connection"}
 
 
 @dataclass
@@ -137,6 +185,7 @@ class ApkAnalysis:
     unknown_manifest_strings: list[str]
     resource_matches: dict[str, int]
     dex: list[DexAnalysis]
+    target_package: str
     compatible: bool
     warnings: list[str]
 
@@ -152,6 +201,10 @@ class PatchReport:
     input_sha256: str
     output_sha256: str
     panel_side: str
+    instance: str
+    package_name: str
+    app_label: str
+    icon_hue: int
     manifest_changes: list[tuple[str, str]]
     dex_changes: dict[str, int]
     resource_changes: dict[str, int]
@@ -221,7 +274,7 @@ def _dex_string_table(data: bytes) -> tuple[int, int, list[int]]:
     return string_ids_size, string_ids_off, offsets
 
 
-def analyse_dex(name: str, data: bytes) -> DexAnalysis:
+def analyse_dex(name: str, data: bytes, new_pkg: str = NEW_PKG) -> DexAnalysis:
     result = DexAnalysis(name=name)
     try:
         _size, _off, offsets = _dex_string_table(data)
@@ -246,18 +299,20 @@ def analyse_dex(name: str, data: bytes) -> DexAnalysis:
         for idx in indexes:
             prev_s = _dex_string_asciiish(data, offsets[idx - 1]) if idx > 0 else ""
             next_s = _dex_string_asciiish(data, offsets[idx + 1]) if idx + 1 < len(offsets) else "\U0010ffff"
-            safe = (not prev_s or prev_s < NEW_PKG) and (not next_s or NEW_PKG < next_s)
+            safe = (not prev_s or prev_s < new_pkg) and (not next_s or new_pkg < next_s)
             result.sort_safe &= safe
-            result.neighbours.append(f"{prev_s!r} < {NEW_PKG!r} < {next_s!r} => {'OK' if safe else 'UNSAFE'}")
+            result.neighbours.append(f"{prev_s!r} < {new_pkg!r} < {next_s!r} => {'OK' if safe else 'UNSAFE'}")
     except Exception as e:
         result.error = str(e)
         result.sort_safe = False
     return result
 
 
-def _manifest_replacements() -> dict[str, str]:
-    d = {s: s.replace(OLD_PKG, NEW_PKG, 1) for s in KNOWN_MANIFEST_EXACT}
-    d.update(SPECIAL_MANIFEST_REPLACEMENTS)
+def _manifest_replacements(new_pkg: str = NEW_PKG) -> dict[str, str]:
+    if len(new_pkg) != len(OLD_PKG):
+        raise PatchError("Alternate package must be the same length as com.spotify.music")
+    d = {s: s.replace(OLD_PKG, new_pkg, 1) for s in KNOWN_MANIFEST_EXACT}
+    d.update(_special_manifest_replacements(new_pkg))
     for old, new in d.items():
         if len(old) != len(new):
             raise AssertionError(f"Replacement length mismatch: {old!r} -> {new!r}")
@@ -306,8 +361,8 @@ def _unknown_manifest_strings(strings: list[str]) -> list[str]:
     return unknown
 
 
-def patch_binary_manifest(data: bytes) -> tuple[bytes, list[tuple[str, str]], list[str]]:
-    repl = _manifest_replacements()
+def patch_binary_manifest(data: bytes, new_pkg: str = NEW_PKG) -> tuple[bytes, list[tuple[str, str]], list[str]]:
+    repl = _manifest_replacements(new_pkg)
     b = bytearray(data)
     strings, has_pkg = _scan_binary_manifest(data)
     if not has_pkg:
@@ -340,8 +395,10 @@ def patch_binary_manifest(data: bytes) -> tuple[bytes, list[tuple[str, str]], li
     return bytes(b), changed, _unknown_manifest_strings(strings)
 
 
-def patch_dex_exact_package(data: bytes) -> tuple[bytes, int]:
-    analysis = analyse_dex("dex", data)
+def patch_dex_exact_package(
+    data: bytes, new_pkg: str = NEW_PKG
+) -> tuple[bytes, int]:
+    analysis = analyse_dex("dex", data, new_pkg)
     if analysis.error:
         raise PatchError("DEX analysis failed before patching: " + analysis.error)
     if not analysis.sort_safe:
@@ -352,7 +409,7 @@ def patch_dex_exact_package(data: bytes) -> tuple[bytes, int]:
         )
 
     old = bytes([len(OLD_PKG)]) + OLD_PKG.encode("ascii") + b"\x00"
-    new = bytes([len(NEW_PKG)]) + NEW_PKG.encode("ascii") + b"\x00"
+    new = bytes([len(new_pkg)]) + new_pkg.encode("ascii") + b"\x00"
     count = data.count(old)
     if count == 0:
         return data, 0
@@ -437,10 +494,11 @@ def _map_idx(idx,mapping):
 def _attr_res_id(name_idx,resmap):
     return resmap[name_idx] if 0 <= name_idx < len(resmap) else 0xffffffff
 
-def patch_rhs_layout(data):
+def patch_rhs_layout(data, new_pkg: str = NEW_PKG):
     root_hs=u16(data,2); assert root_hs==8
     pool_off=root_hs; meta=parse_pool(data,pool_off); old=meta['strings']
-    if 'layoutDirection' in old or 'com.spotify.musib.LtrFrameLayout' in old:
+    ltr_class = new_pkg + '.LtrFrameLayout'
+    if 'layoutDirection' in old or ltr_class in old:
         raise RuntimeError('layout already RHS-patched')
     if 'FrameLayout' not in old: raise RuntimeError('FrameLayout not found')
     insert=8
@@ -448,7 +506,7 @@ def patch_rhs_layout(data):
     # old index mapping after insertion
     mapping={i:(i+1 if i>=insert else i) for i in range(len(old))}
     frame_old=old.index('FrameLayout'); frame_new=mapping[frame_old]
-    new[frame_new]='com.spotify.musib.LtrFrameLayout'
+    new[frame_new]=ltr_class
     newpool=build_pool(new,meta)
 
     o=pool_off+meta['size']
@@ -493,7 +551,7 @@ def patch_rhs_layout(data):
                 if name=='id': idval=dval
             need_dir=None
             if tag=='com.spotify.musicappplatform.main.MainLayout': need_dir=1
-            elif tag in ('com.spotify.musib.LtrFrameLayout','androidx.coordinatorlayout.widget.CoordinatorLayout','com.spotify.encoremobile.tooltip.TooltipContainer'):
+            elif tag in (ltr_class,'androidx.coordinatorlayout.widget.CoordinatorLayout','com.spotify.encoremobile.tooltip.TooltipContainer'):
                 need_dir=2
             if tag=='androidx.constraintlayout.widget.Guideline' and idval==0x7f0b12a3:
                 for name,aoff,namei,dtype,dval,raw in attrs:
@@ -544,10 +602,11 @@ def replace_xml_strings(data,replacements):
     struct.pack_into('<I',out,4,len(out))
     return bytes(out),changed
 
-def patch_autoresume_manifest(data):
+def patch_autoresume_manifest(data, new_pkg: str = NEW_PKG):
+    resume_service = new_pkg + '.AutoResumeService'
     repl={
       'android.media.MediaRoute2ProviderService':'byd.intent.action.RESTORE_PLAYBACK',
-      'com.spotify.connect.mediarouteprovider.SpotifyMediaRouteProviderService':'com.spotify.musib.AutoResumeService',
+      'com.spotify.connect.mediarouteprovider.SpotifyMediaRouteProviderService':resume_service,
     }
     data,_=replace_xml_strings(data,repl)
     meta=parse_pool(data,u16(data,2)); ss=meta['strings']; o=u16(data,2)+meta['size']
@@ -566,7 +625,7 @@ def patch_autoresume_manifest(data):
                 rawval=ss[raw] if raw!=0xffffffff else None
                 val=rawval if rawval is not None else (ss[dval] if dtype==3 else dval)
                 attrs.append((ss[namei],ao,namei,dtype,dval,raw,val))
-            if tag=='service' and any(n=='name' and v=='com.spotify.musib.AutoResumeService' for n,ao,ni,dt,dv,r,v in attrs):
+            if tag=='service' and any(n=='name' and v==resume_service for n,ao,ni,dt,dv,r,v in attrs):
                 found=True
                 for n,ao,ni,dt,dv,r,v in attrs:
                     if n=='enabled':
@@ -686,25 +745,100 @@ def add_plus(im):
     im=im.convert('RGBA'); w,h=im.size; d=ImageDraw.Draw(im); cx=w//2; cy=int(round(h*0.79)); stroke=max(2,round(w*0.045)); half=max(3,round(w*0.085)); r=max(1,stroke//2)
     d.rounded_rectangle([cx-half,cy-r,cx+half,cy+r],radius=r,fill=(0,0,0,255)); d.rounded_rectangle([cx-r,cy-half,cx+r,cy+half],radius=r,fill=(0,0,0,255)); return im
 
-def patch_branding(resources,source_icons):
+
+def shift_hue(im, degrees: int):
+    """Rotate icon hue while preserving alpha, saturation and brightness."""
+    degrees = normalise_hue(degrees)
+    rgba = im.convert('RGBA')
+    if degrees == 0:
+        return rgba
+    alpha = rgba.getchannel('A')
+    hsv = rgba.convert('RGB').convert('HSV')
+    h, s, v = hsv.split()
+    delta = int(round(degrees * 255 / 360.0)) % 256
+    h = h.point([(i + delta) % 256 for i in range(256)])
+    rgb = Image.merge('HSV', (h, s, v)).convert('RGB')
+    out = rgb.convert('RGBA')
+    out.putalpha(alpha)
+    return out
+
+
+def load_preview_icon_from_apk(apk_path: str) -> Image.Image | None:
+    """Load the highest-density launcher icon available from a selected APK."""
+    apk_path = (apk_path or "").strip()
+    if not apk_path or not os.path.isfile(apk_path):
+        return None
+
+    preferred = list(reversed(DENSITY_ICON_PATHS))
+    try:
+        with zipfile.ZipFile(apk_path, "r") as zf:
+            for path in preferred:
+                try:
+                    data = zf.read(path)
+                except KeyError:
+                    continue
+                with Image.open(io.BytesIO(data)) as im:
+                    return im.convert("RGBA")
+    except (OSError, zipfile.BadZipFile):
+        return None
+    return None
+
+
+def build_logo_preview_image(source_icon: Image.Image | None, hue: int, size: int = 112) -> Image.Image:
+    """Render the same + mark and hue rotation used by the APK branding patch."""
+    hue = normalise_hue(hue)
+    canvas = Image.new("RGBA", (size, size), (245, 245, 245, 255))
+    if source_icon is None:
+        return canvas
+
+    preview = shift_hue(add_plus(source_icon.copy()), hue)
+    max_icon = max(32, size - 18)
+    preview.thumbnail((max_icon, max_icon), Image.Resampling.LANCZOS)
+    x = (size - preview.width) // 2
+    y = (size - preview.height) // 2
+    canvas.alpha_composite(preview, (x, y))
+    return canvas
+
+
+def patch_branding(resources, source_icons, app_label: str = NEW_APP_LABEL, icon_hue: int = 0):
+    app_label = validate_app_label(app_label)
+    icon_hue = normalise_hue(icon_hue)
     arsc=bytearray(resources); original=parse_pool(arsc,u16(arsc,2)); tmp=list(original['strings']); idxmap={}
-    for s in [NEW_LABEL,NEW_FG_PATH]:
+    for s in [app_label,NEW_FG_PATH]:
         if s in tmp: idx=tmp.index(s)
         else: idx=len(tmp);tmp.append(s)
         idxmap[s]=idx
-    for rid,new_idx,expect_key in [(APP_NAME_RID,idxmap[NEW_LABEL],'app_name'),(FG_RID,idxmap[NEW_FG_PATH],'ic_launcher_renaissance_foreground')]:
+    for rid,new_idx,expect_key in [(APP_NAME_RID,idxmap[app_label],'app_name'),(FG_RID,idxmap[NEW_FG_PATH],'ic_launcher_renaissance_foreground')]:
         vals=find_value_positions(arsc,rid)
         if not vals: raise RuntimeError(f'RID {rid:#x} not found')
         for v in vals:
             if v['key']!=expect_key or v['dtype']!=3: raise RuntimeError((rid,v))
             struct.pack_into('<I',arsc,v['pos'],new_idx)
-    arsc,idxs=rebuild_global_pool(arsc,[NEW_LABEL,NEW_FG_PATH])
+    arsc,idxs=rebuild_global_pool(arsc,[app_label,NEW_FG_PATH])
     icon_repl={}
     for path,bb in source_icons.items():
-        im=Image.open(io.BytesIO(bb)); out=add_plus(im); buf=io.BytesIO(); out.save(buf,'WEBP',lossless=True,quality=100,method=6); icon_repl[path]=buf.getvalue()
-    base=add_plus(Image.open(io.BytesIO(source_icons['res/mipmap-xxxhdpi-v4/ic_launcher_renaissance.webp']))); base=base.resize((240,240),Image.Resampling.LANCZOS)
+        im=Image.open(io.BytesIO(bb)); out=shift_hue(add_plus(im), icon_hue); buf=io.BytesIO(); out.save(buf,'WEBP',lossless=True,quality=100,method=6); icon_repl[path]=buf.getvalue()
+    base=shift_hue(add_plus(Image.open(io.BytesIO(source_icons['res/mipmap-xxxhdpi-v4/ic_launcher_renaissance.webp']))), icon_hue); base=base.resize((240,240),Image.Resampling.LANCZOS)
     canvas=Image.new('RGBA',(432,432),(0,0,0,0)); canvas.alpha_composite(base,((432-240)//2,(432-240)//2)); buf=io.BytesIO(); canvas.save(buf,'PNG',optimize=True)
     return bytes(arsc),icon_repl,buf.getvalue()
+
+
+def retarget_helper_dex(data: bytes, new_pkg: str) -> bytes:
+    """Retarget only our injected helper classes; helper behavior is unchanged."""
+    if new_pkg == NEW_PKG:
+        return data
+    if len(new_pkg) != len(NEW_PKG):
+        raise PatchError("Helper package replacement must preserve DEX string length")
+    old_slash = NEW_PKG.replace('.', '/').encode('ascii')
+    new_slash = new_pkg.replace('.', '/').encode('ascii')
+    old_dot = NEW_PKG.encode('ascii')
+    new_dot = new_pkg.encode('ascii')
+    b = bytearray(data.replace(old_slash, new_slash).replace(old_dot, new_dot))
+    if len(b) != len(data):
+        raise PatchError("Helper DEX retarget unexpectedly changed file size")
+    b[12:32] = hashlib.sha1(bytes(b[32:])).digest()
+    struct.pack_into('<I', b, 8, zlib.adler32(bytes(b[12:])) & 0xFFFFFFFF)
+    return bytes(b)
 
 
 def is_v1_signature_metadata(name: str) -> bool:
@@ -802,7 +936,11 @@ def _profile_resource_sanity(resources: bytes) -> None:
             raise PatchError(f"Required Spotify 8.9 resource {expected_key} was not found as expected")
 
 
-def analyse_apk(input_path: str | Path, log: Callable[[str], None] | None = None) -> ApkAnalysis:
+def analyse_apk(
+    input_path: str | Path,
+    log: Callable[[str], None] | None = None,
+    target_package: str = NEW_PKG,
+) -> ApkAnalysis:
     log = log or (lambda _s: None)
     src = Path(input_path)
     if not src.is_file():
@@ -833,7 +971,7 @@ def analyse_apk(input_path: str | Path, log: Callable[[str], None] | None = None
                 f"{spotify_version or 'unknown'} ({spotify_version_code if spotify_version_code is not None else 'unknown'})."
             )
 
-        repl = _manifest_replacements()
+        repl = _manifest_replacements(target_package)
         manifest_patch_count = sum(1 for x in strings if x in repl)
         unknown_manifest = _unknown_manifest_strings(strings)
         if unknown_manifest:
@@ -851,7 +989,7 @@ def analyse_apk(input_path: str | Path, log: Callable[[str], None] | None = None
 
         resources = zin.read("resources.arsc")
         resource_matches: dict[str, int] = {}
-        for old in RESOURCE_REPLACEMENTS:
+        for old in _resource_replacements(target_package):
             c = resources.count(old)
             if c:
                 resource_matches[old.decode("ascii")] = c
@@ -877,13 +1015,13 @@ def analyse_apk(input_path: str | Path, log: Callable[[str], None] | None = None
             (i.filename for i in zin.infolist() if re.fullmatch(r"classes(?:\d+)?\.dex", i.filename)),
             key=lambda n: (len(n), n),
         )
-        dex_results = [analyse_dex(name, zin.read(name)) for name in dex_entries]
+        dex_results = [analyse_dex(name, zin.read(name), target_package) for name in dex_entries]
         if any(d.error for d in dex_results):
             warnings.append("At least one DEX file could not be structurally analysed.")
         if not any(d.exact_package_occurrences for d in dex_results):
             warnings.append("No exact Spotify process/package string was found in DEX files.")
         if any(not d.sort_safe for d in dex_results):
-            warnings.append("DEX lexical ordering would be unsafe with the current alternate package name.")
+            warnings.append("DEX lexical ordering would be unsafe with the selected alternate package name.")
         if len(dex_entries) != 7 or "classes8.dex" in names or "classes9.dex" in names:
             warnings.append("Expected the stock Spotify 8.9 seven-DEX layout (classes.dex through classes7.dex).")
 
@@ -924,6 +1062,7 @@ def analyse_apk(input_path: str | Path, log: Callable[[str], None] | None = None
         unknown_manifest_strings=unknown_manifest,
         resource_matches=resource_matches,
         dex=dex_results,
+        target_package=target_package,
         compatible=compatible,
         warnings=warnings,
     )
@@ -946,11 +1085,20 @@ def patch_apk(
     output_path: str | Path,
     panel_side: str = PANEL_LEFT,
     log: Callable[[str], None] | None = None,
+    instance: str = INSTANCE_PRIMARY,
+    app_label: str | None = None,
+    icon_hue: int | float | None = None,
 ) -> PatchReport:
     log = log or (lambda _s: None)
     panel_side = panel_side.lower().strip()
     if panel_side not in (PANEL_LEFT, PANEL_RIGHT):
         raise PatchError("panel_side must be 'left' or 'right'")
+
+    cfg = get_instance_config(instance)
+    instance = instance.lower().strip()
+    target_package = cfg["package"]
+    app_label = validate_app_label(app_label if app_label is not None else cfg["label"])
+    icon_hue = normalise_hue(cfg["hue"] if icon_hue is None else icon_hue)
 
     src = Path(input_path)
     out = Path(output_path)
@@ -960,7 +1108,7 @@ def patch_apk(
         raise PatchError("Input and output paths must be different")
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    analysis = analyse_apk(src, log)
+    analysis = analyse_apk(src, log, target_package)
     if not analysis.compatible:
         raise PatchError(
             f"Only the proven Spotify {SUPPORTED_SPOTIFY_VERSION} APK profile is supported by v{APP_VERSION}. "
@@ -969,6 +1117,9 @@ def patch_apk(
 
     input_sha = analysis.input_sha256
     log(f"Input SHA-256: {input_sha}")
+    log(f"App instance: {cfg['title']} — {target_package}")
+    log(f"Display name: {app_label}")
+    log(f"Launcher icon hue shift: {icon_hue}°")
     log("Panel profile: " + ("LEFT / LHD (v9 layout)" if panel_side == PANEL_LEFT else "RIGHT / RHD (v14 layout)"))
 
     manifest_changes: list[tuple[str, str]] = []
@@ -982,35 +1133,37 @@ def patch_apk(
         with zipfile.ZipFile(src, "r") as zin:
             names = {i.filename for i in zin.infolist()}
             patched_manifest, manifest_changes, unknown_manifest = patch_binary_manifest(
-                zin.read("AndroidManifest.xml")
+                zin.read("AndroidManifest.xml"), target_package
             )
             if unknown_manifest:
                 warnings.append(
                     "Unrecognised package-scoped manifest strings were left unchanged: "
                     + ", ".join(unknown_manifest)
                 )
-            patched_manifest = patch_autoresume_manifest(patched_manifest)
+            patched_manifest = patch_autoresume_manifest(patched_manifest, target_package)
             log("BYD RESTORE_PLAYBACK auto-resume service injected.")
 
             resources = zin.read("resources.arsc")
-            for old, new in RESOURCE_REPLACEMENTS.items():
-                if len(old) != len(new):
+            for old, new_value in _resource_replacements(target_package).items():
+                if len(old) != len(new_value):
                     raise AssertionError("resources.arsc replacement length mismatch")
                 count = resources.count(old)
                 if count:
-                    resources = resources.replace(old, new)
+                    resources = resources.replace(old, new_value)
                     resource_changes[old.decode("ascii")] = count
 
             resources, ui_changes = patch_ui_v9_resources(resources)
             log(f"Applied proven v9 compact/larger-text resource profile ({len(ui_changes)} resource values).")
 
             source_icons = {p: zin.read(p) for p in DENSITY_ICON_PATHS}
-            resources, icon_replacements, adaptive_png = patch_branding(resources, source_icons)
-            log("Applied SpotifyPlus app label and '+' launcher icon.")
+            resources, icon_replacements, adaptive_png = patch_branding(
+                resources, source_icons, app_label, icon_hue
+            )
+            log(f"Applied {app_label!r} app label, '+' launcher mark and {icon_hue}° hue shift.")
 
             wide_layout = zin.read(WIDE_LAYOUT_PATH)
             if panel_side == PANEL_RIGHT:
-                wide_layout = patch_rhs_layout(wide_layout)
+                wide_layout = patch_rhs_layout(wide_layout, target_package)
                 log("Applied proven v14 right-side panel transformation with LTR content containers.")
 
             src_services = {
@@ -1019,8 +1172,8 @@ def patch_apk(
                 if i.filename.startswith("META-INF/services/")
             }
 
-            ltr_dex = base64.b64decode(LTR_FRAME_DEX_B64)
-            auto_dex = base64.b64decode(AUTO_RESUME_DEX_B64)
+            ltr_dex = retarget_helper_dex(base64.b64decode(LTR_FRAME_DEX_B64), target_package)
+            auto_dex = retarget_helper_dex(base64.b64decode(AUTO_RESUME_DEX_B64), target_package)
             inject_dex: list[tuple[str, bytes]]
             if panel_side == PANEL_RIGHT:
                 inject_dex = [("classes8.dex", ltr_dex), ("classes9.dex", auto_dex)]
@@ -1050,7 +1203,7 @@ def patch_apk(
                     else:
                         payload = zin.read(name)
                         if re.fullmatch(r"classes(?:\d+)?\.dex", name):
-                            payload, count = patch_dex_exact_package(payload)
+                            payload, count = patch_dex_exact_package(payload, target_package)
                             if count:
                                 dex_changes[name] = count
 
@@ -1095,29 +1248,32 @@ def patch_apk(
             if old_exact in d:
                 raise PatchError(f"Old exact package/process string remains in {name}")
 
+        helper_pkg_bytes = target_package.replace('.', '/').encode('ascii')
         for helper_name, _ in inject_dex:
             d = zout.read(helper_name)
             if d[12:32] != hashlib.sha1(d[32:]).digest():
                 raise PatchError(f"Injected helper DEX SHA-1 validation failed: {helper_name}")
             if struct.unpack_from("<I", d, 8)[0] != (zlib.adler32(d[12:]) & 0xFFFFFFFF):
                 raise PatchError(f"Injected helper DEX Adler32 validation failed: {helper_name}")
+            if helper_pkg_bytes not in d:
+                raise PatchError(f"Injected helper DEX package retarget failed: {helper_name}")
 
         out_manifest_strings, _ = _scan_binary_manifest(zout.read("AndroidManifest.xml"))
-        if "com.spotify.musib.AutoResumeService" not in out_manifest_strings:
+        if target_package + ".AutoResumeService" not in out_manifest_strings:
             raise PatchError("Auto-resume service manifest verification failed")
         if "byd.intent.action.RESTORE_PLAYBACK" not in out_manifest_strings:
             raise PatchError("BYD restore action manifest verification failed")
 
         out_resources = zout.read("resources.arsc")
         gp = parse_pool(out_resources, u16(out_resources, 2))["strings"]
-        if NEW_APP_LABEL not in gp or NEW_ADAPTIVE_FOREGROUND_PATH not in gp:
-            raise PatchError("SpotifyPlus branding verification failed")
+        if app_label not in gp or NEW_ADAPTIVE_FOREGROUND_PATH not in gp:
+            raise PatchError("App branding verification failed")
 
         layout_sha = hashlib.sha256(zout.read(WIDE_LAYOUT_PATH)).hexdigest()
-        expected_layout_sha = (
-            "6912316de2ad7de66a222898a1259943a8cbbcae4a2419e6b7699accc9510342"
-            if panel_side == PANEL_RIGHT else WIDE_LAYOUT_BASE_SHA256
-        )
+        expected_layout = zin.read(WIDE_LAYOUT_PATH)
+        if panel_side == PANEL_RIGHT:
+            expected_layout = patch_rhs_layout(expected_layout, target_package)
+        expected_layout_sha = hashlib.sha256(expected_layout).hexdigest()
         if layout_sha != expected_layout_sha:
             raise PatchError("Final wide-screen layout verification failed")
 
@@ -1129,6 +1285,10 @@ def patch_apk(
         input_sha256=input_sha,
         output_sha256=output_sha,
         panel_side=panel_side,
+        instance=instance,
+        package_name=target_package,
+        app_label=app_label,
+        icon_hue=icon_hue,
         manifest_changes=manifest_changes,
         dex_changes=dex_changes,
         resource_changes=resource_changes,
@@ -1611,12 +1771,18 @@ def patch_and_sign(
     output_path: str | Path,
     panel_side: str = PANEL_LEFT,
     log: Callable[[str], None] | None = None,
+    instance: str = INSTANCE_PRIMARY,
+    app_label: str | None = None,
+    icon_hue: int | float | None = None,
 ) -> PatchReport:
     log = log or print
     output = Path(output_path)
     with tempfile.TemporaryDirectory(prefix="bydspotify-") as td:
         unsigned = Path(td) / "patched-aligned-unsigned.apk"
-        report = patch_apk(input_path, unsigned, panel_side, log)
+        report = patch_apk(
+            input_path, unsigned, panel_side, log,
+            instance=instance, app_label=app_label, icon_hue=icon_hue,
+        )
         sign_apk(unsigned, output, log)
         report.output_path = output
         report.output_sha256 = sha256_file(output)
@@ -1624,9 +1790,10 @@ def patch_and_sign(
         return report
 
 
-def _default_output(input_path: str) -> str:
+def _default_output(input_path: str, instance: str = INSTANCE_PRIMARY) -> str:
     p = Path(input_path)
-    return str(p.with_name(p.stem + "_BYD.apk"))
+    cfg = get_instance_config(instance)
+    return str(p.with_name(p.stem + "_BYD" + cfg["output_suffix"] + ".apk"))
 
 
 def _format_size(n: int) -> str:
@@ -1639,6 +1806,7 @@ def _analysis_text(a: ApkAnalysis) -> str:
         f"Compatibility: {'SUPPORTED' if a.compatible else 'NOT SUPPORTED'}",
         f"Spotify version: {a.spotify_version or 'unknown'} (versionCode {a.spotify_version_code if a.spotify_version_code is not None else 'unknown'})",
         f"Patch profile: {a.profile_name}",
+        f"Selected package: {a.target_package}",
         f"Input SHA-256: {a.input_sha256}",
         f"Wide-screen layout SHA-256: {a.wide_layout_sha256 or 'unknown'}",
         f"Size: {_format_size(a.size_bytes)}",
@@ -1671,7 +1839,7 @@ def export_diagnostics(a: ApkAnalysis, destination: str | Path) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "patcher_version": APP_VERSION,
-        "alternate_package": NEW_PKG,
+        "alternate_package": a.target_package,
         "signing_engine": signing_engine_status(),
         "signing_certificate_sha256": signing_certificate_fingerprint(),
         "input_filename": a.input_path.name,
@@ -1699,11 +1867,57 @@ def export_diagnostics(a: ApkAnalysis, destination: str | Path) -> Path:
 def run_gui() -> None:
     import tkinter as tk
     from tkinter import filedialog, messagebox, simpledialog, ttk
+    from PIL import ImageTk
 
     root = tk.Tk()
+    root.withdraw()  # avoid a visible top-left flash before final sizing/centering
     root.title(f"BYD Spotify Patcher v{APP_VERSION}")
-    root.geometry("900x720")
-    root.minsize(820, 650)
+
+    def desktop_work_area() -> tuple[int, int, int, int]:
+        """Return usable desktop x/y/width/height in Tk coordinate units."""
+        screen_w = max(1, int(root.winfo_screenwidth()))
+        screen_h = max(1, int(root.winfo_screenheight()))
+        left, top, right, bottom = 0, 0, screen_w, screen_h
+
+        # On Windows, exclude the taskbar. Scale the Win32 coordinates back to
+        # Tk units when display scaling/DPI virtualisation makes them differ.
+        if os.name == "nt":
+            try:
+                import ctypes
+                from ctypes import wintypes
+
+                rect = wintypes.RECT()
+                SPI_GETWORKAREA = 0x0030
+                ok = ctypes.windll.user32.SystemParametersInfoW(
+                    SPI_GETWORKAREA, 0, ctypes.byref(rect), 0
+                )
+                if ok:
+                    native_w = max(1, int(ctypes.windll.user32.GetSystemMetrics(0)))
+                    native_h = max(1, int(ctypes.windll.user32.GetSystemMetrics(1)))
+                    sx = screen_w / native_w
+                    sy = screen_h / native_h
+                    left = int(round(rect.left * sx))
+                    top = int(round(rect.top * sy))
+                    right = int(round(rect.right * sx))
+                    bottom = int(round(rect.bottom * sy))
+            except Exception:
+                pass
+
+        return left, top, max(1, right - left), max(1, bottom - top)
+
+    # Keep the log compact on shorter/scaled desktops so the action/signing
+    # controls at the bottom are visible immediately without manual resizing.
+    _work_x, _work_y, _work_w, _work_h = desktop_work_area()
+    if _work_h <= 760:
+        log_lines = 4
+    elif _work_h <= 820:
+        log_lines = 7
+    elif _work_h <= 950:
+        log_lines = 10
+    elif _work_h <= 1100:
+        log_lines = 13
+    else:
+        log_lines = 16
 
     input_var = tk.StringVar()
     output_var = tk.StringVar()
@@ -1713,6 +1927,13 @@ def run_gui() -> None:
     signer_var = tk.StringVar(value="Signing engine: " + signing_engine_status())
     panel_var = tk.StringVar(value=PANEL_RIGHT)
     panel_desc_var = tk.StringVar(value="Right / RHD: v9 text + compact lists, with the v14 navigation/player panel moved to the right.")
+    instance_var = tk.StringVar(value=INSTANCE_PRIMARY)
+    app_label_var = tk.StringVar(value=INSTANCE_CONFIG[INSTANCE_PRIMARY]["label"])
+    hue_var = tk.IntVar(value=INSTANCE_CONFIG[INSTANCE_PRIMARY]["hue"])
+    package_var = tk.StringVar(value=INSTANCE_CONFIG[INSTANCE_PRIMARY]["package"])
+    instance_desc_var = tk.StringVar(value="com.spotify.musib — main SpotifyPlus profile.")
+    preview_note_var = tk.StringVar(value="Select an APK")
+    preview_cache = {"apk_path": None, "icon": None, "photo": None}
     last_analysis: dict[str, ApkAnalysis | None] = {"value": None}
 
     frm = ttk.Frame(root, padding=14)
@@ -1736,7 +1957,7 @@ def run_gui() -> None:
         p = filedialog.askopenfilename(filetypes=[("Android APK", "*.apk"), ("All files", "*.*")])
         if p:
             input_var.set(p)
-            output_var.set(_default_output(p))
+            output_var.set(_default_output(p, instance_var.get()))
             clear_analysis()
 
     ttk.Button(row1, text="Browse…", command=browse_input).pack(side="left")
@@ -1752,6 +1973,85 @@ def run_gui() -> None:
             output_var.set(p)
 
     ttk.Button(row2, text="Save as…", command=browse_output).pack(side="left")
+
+    profile_row = ttk.Frame(frm)
+    profile_row.pack(fill="x", pady=(8, 2))
+
+    profile_controls = ttk.Frame(profile_row)
+    profile_controls.pack(side="left", fill="x", expand=True)
+
+    instance_row = ttk.Frame(profile_controls)
+    instance_row.pack(fill="x", pady=(0, 2))
+    ttk.Label(instance_row, text="App instance (for separate Spotify profiles)").pack(side="left")
+
+    def update_instance():
+        cfg = get_instance_config(instance_var.get())
+        package_var.set(cfg["package"])
+        app_label_var.set(cfg["label"])
+        hue_var.set(cfg["hue"])
+        if instance_var.get() == INSTANCE_SECONDARY:
+            instance_desc_var.set(f"{cfg['package']} — second separate Spotify profile.")
+        else:
+            instance_desc_var.set(f"{cfg['package']} — main SpotifyPlus profile.")
+        src = input_var.get().strip()
+        if src:
+            output_var.set(_default_output(src, instance_var.get()))
+        clear_analysis()
+
+    ttk.Radiobutton(
+        instance_row, text="Primary", variable=instance_var, value=INSTANCE_PRIMARY, command=update_instance
+    ).pack(side="left", padx=(12, 12))
+    ttk.Radiobutton(
+        instance_row, text="Secondary", variable=instance_var, value=INSTANCE_SECONDARY, command=update_instance
+    ).pack(side="left", padx=(0, 12))
+    ttk.Label(profile_controls, textvariable=instance_desc_var).pack(anchor="w", padx=(166, 0), pady=(0, 2))
+
+    package_row = ttk.Frame(profile_controls)
+    package_row.pack(fill="x", pady=2)
+    ttk.Label(package_row, text="Internal package", width=20).pack(side="left")
+    ttk.Label(package_row, textvariable=package_var).pack(side="left", padx=6)
+
+    label_row = ttk.Frame(profile_controls)
+    label_row.pack(fill="x", pady=2)
+    ttk.Label(label_row, text="Visible app name", width=20).pack(side="left")
+    ttk.Entry(label_row, textvariable=app_label_var, width=30).pack(side="left", padx=6)
+    ttk.Label(label_row, text=f"max {MAX_APP_LABEL_LEN} characters").pack(side="left")
+
+    hue_row = ttk.Frame(profile_controls)
+    hue_row.pack(fill="x", pady=(2, 6))
+    ttk.Label(hue_row, text="Logo hue shift", width=20).pack(side="left")
+    tk.Scale(
+        hue_row, from_=0, to=359, orient="horizontal", variable=hue_var, resolution=1,
+        showvalue=True, length=360, highlightthickness=0
+    ).pack(side="left", padx=2)
+    ttk.Label(hue_row, text="degrees (0 = original green)").pack(side="left", padx=(6, 0))
+
+    preview_box = ttk.LabelFrame(profile_row, text="Logo preview", padding=6)
+    preview_box.pack(side="right", padx=(12, 4), anchor="n")
+    preview_label = ttk.Label(preview_box, anchor="center")
+    preview_label.pack()
+    ttk.Label(preview_box, textvariable=preview_note_var, anchor="center").pack(fill="x", pady=(3, 0))
+
+    def refresh_logo_preview(*_):
+        apk_path = input_var.get().strip()
+        if apk_path != preview_cache["apk_path"]:
+            preview_cache["apk_path"] = apk_path
+            preview_cache["icon"] = load_preview_icon_from_apk(apk_path)
+
+        try:
+            hue = normalise_hue(hue_var.get())
+        except (PatchError, tk.TclError):
+            return
+
+        img = build_logo_preview_image(preview_cache["icon"], hue, size=112)
+        photo = ImageTk.PhotoImage(img)
+        preview_cache["photo"] = photo
+        preview_label.configure(image=photo)
+        preview_note_var.set(f"Hue {hue}°" if preview_cache["icon"] is not None else "Select an APK")
+
+    input_var.trace_add("write", refresh_logo_preview)
+    hue_var.trace_add("write", refresh_logo_preview)
+    refresh_logo_preview()
 
     side_row = ttk.Frame(frm)
     side_row.pack(fill="x", pady=(8, 2))
@@ -1779,7 +2079,7 @@ def run_gui() -> None:
     ttk.Label(info_row, textvariable=signer_var).pack(side="right")
 
     ttk.Separator(frm).pack(fill="x", pady=8)
-    logbox = tk.Text(frm, height=23, wrap="word", state="disabled", font=("Consolas", 9))
+    logbox = tk.Text(frm, height=log_lines, wrap="word", state="disabled", font=("Consolas", 9))
     logbox.pack(fill="both", expand=True)
 
     def ui_log(s: str):
@@ -1827,17 +2127,21 @@ def run_gui() -> None:
         if not src:
             messagebox.showerror("Missing file", "Select an original Spotify APK first.")
             return
+        cfg = get_instance_config(instance_var.get())
+        target_package = cfg["package"]
         set_busy(True)
         status_var.set("Analysing APK structure…")
         ui_log("=" * 72)
         ui_log(f"Analysing: {src}")
+        ui_log(f"Target package: {target_package}")
 
         def worker():
             try:
-                a = analyse_apk(src, ui_log)
+                a = analyse_apk(src, ui_log, target_package)
                 last_analysis["value"] = a
                 ui_log(_analysis_text(a))
-                root.after(0, lambda: compat_var.set("SUPPORTED" if a.compatible else "NOT SUPPORTED"))
+                compat_text = "SUPPORTED" if a.compatible else "NOT SUPPORTED"
+                root.after(0, lambda: compat_var.set(compat_text))
                 root.after(0, lambda: status_var.set(
                     "Ready to patch." if a.compatible else "Unsupported structure — no APK will be created."
                 ))
@@ -1864,22 +2168,38 @@ def run_gui() -> None:
         if not a or not a.compatible:
             messagebox.showerror("Analyse first", "Run ANALYSE APK and resolve any compatibility failure first.")
             return
+        try:
+            selected_label = validate_app_label(app_label_var.get())
+            selected_hue = normalise_hue(hue_var.get())
+        except Exception as e:
+            messagebox.showerror("Branding option", str(e))
+            return
+        selected_instance = instance_var.get()
         set_busy(True)
         status_var.set("Patching, aligning, signing and verifying…")
         ui_log("=" * 72)
         ui_log(f"Input:  {src}")
         ui_log(f"Output: {dst}")
+        ui_log(f"Instance: {get_instance_config(selected_instance)['title']} ({package_var.get()})")
+        ui_log(f"Visible name: {selected_label}")
+        ui_log(f"Icon hue: {selected_hue}°")
         ui_log("Panel:  " + ("Left / LHD" if panel_var.get() == PANEL_LEFT else "Right / RHD"))
 
         def worker():
             try:
-                report = patch_and_sign(src, dst, panel_var.get(), ui_log)
+                report = patch_and_sign(
+                    src, dst, panel_var.get(), ui_log,
+                    instance=selected_instance, app_label=selected_label, icon_hue=selected_hue,
+                )
                 for w in report.warnings:
                     ui_log("WARNING: " + w)
                 ui_log(f"Manifest strings patched: {len(report.manifest_changes)}")
                 ui_log(f"DEX entries patched: {report.dex_changes}")
                 ui_log(f"UI resource values patched: {report.ui_changes}")
                 ui_log(f"Panel side: {report.panel_side}")
+                ui_log(f"Package: {report.package_name}")
+                ui_log(f"Visible name: {report.app_label}")
+                ui_log(f"Icon hue: {report.icon_hue}°")
                 ui_log(f"Runtime service files preserved: {report.services_preserved}")
                 ui_log(f"Final SHA-256: {report.output_sha256}")
                 root.after(0, refresh_key_label)
@@ -2001,6 +2321,30 @@ def run_gui() -> None:
     ttk.Button(keyrow, text="Import backup…", command=import_key).pack(side="left", padx=4)
     ttk.Button(keyrow, text="Exit", command=root.destroy).pack(side="right")
 
+    def size_and_center_window():
+        """Fit the GUI inside the usable desktop and center it before showing."""
+        root.update_idletasks()
+
+        work_x, work_y, work_w, work_h = desktop_work_area()
+        requested_w = max(1, int(root.winfo_reqwidth()))
+        requested_h = max(1, int(root.winfo_reqheight()))
+
+        # Keep a small drag/resize margin inside the usable work area.
+        margin = 16
+        max_w = max(760, work_w - margin * 2)
+        max_h = max(600, work_h - margin * 2)
+
+        target_w = min(max(requested_w, 920), max_w)
+        target_h = min(max(requested_h, 700), max_h)
+
+        x = work_x + max(0, (work_w - target_w) // 2)
+        y = work_y + max(0, (work_h - target_h) // 2)
+
+        root.geometry(f"{target_w}x{target_h}+{x}+{y}")
+        root.minsize(min(820, target_w), min(600, target_h))
+
+    size_and_center_window()
+    root.deiconify()
     root.mainloop()
 
 
@@ -2013,6 +2357,12 @@ def cli(argv: list[str] | None = None) -> int:
         "--panel-side", choices=[PANEL_LEFT, PANEL_RIGHT], default=PANEL_LEFT,
         help="wide-screen navigation/player side: left=v9/LHD, right=v14/RHD (default: left)",
     )
+    parser.add_argument(
+        "--instance", choices=[INSTANCE_PRIMARY, INSTANCE_SECONDARY], default=INSTANCE_PRIMARY,
+        help="clone identity: primary=musib, secondary=musia",
+    )
+    parser.add_argument("--app-label", help=f"visible launcher name (max {MAX_APP_LABEL_LEN} characters)")
+    parser.add_argument("--icon-hue", type=int, help="launcher icon hue rotation in degrees (0-359)")
     parser.add_argument("--analyse", action="store_true", help="analyse compatibility only")
     parser.add_argument("--diagnostics", metavar="JSON", help="analyse and export support-safe diagnostics JSON")
     parser.add_argument("--gui", action="store_true", help="open GUI")
@@ -2040,20 +2390,32 @@ def cli(argv: list[str] | None = None) -> int:
         if args.gui or not args.input:
             run_gui()
             return 0
+        cfg = get_instance_config(args.instance)
+        target_package = cfg["package"]
+        app_label = validate_app_label(args.app_label if args.app_label is not None else cfg["label"])
+        icon_hue = normalise_hue(args.icon_hue if args.icon_hue is not None else cfg["hue"])
         if args.diagnostics:
-            a = analyse_apk(args.input)
+            a = analyse_apk(args.input, target_package=target_package)
             export_diagnostics(a, args.diagnostics)
             print(_analysis_text(a))
             print("Diagnostics:", args.diagnostics)
             return 0
         if args.analyse:
-            print(_analysis_text(analyse_apk(args.input)))
+            print(_analysis_text(analyse_apk(
+                args.input, target_package=target_package
+            )))
             return 0
-        output = args.output or _default_output(args.input)
+        output = args.output or _default_output(args.input, args.instance)
         if args.unsigned:
-            r = patch_apk(args.input, output, args.panel_side, print)
+            r = patch_apk(
+                args.input, output, args.panel_side, print,
+                instance=args.instance, app_label=app_label, icon_hue=icon_hue,
+            )
         else:
-            r = patch_and_sign(args.input, output, args.panel_side, print)
+            r = patch_and_sign(
+                args.input, output, args.panel_side, print,
+                instance=args.instance, app_label=app_label, icon_hue=icon_hue,
+            )
         for w in r.warnings:
             print("WARNING:", w)
         print("Ready:", r.output_path)
