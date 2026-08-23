@@ -37,9 +37,9 @@ The main window is intentionally simple: choose the patch options, then use **AN
 
    Windows may show a security warning because the patcher is not code-signed with a commercial certificate. This is expected for an independently distributed open-source tool and does not mean Windows has detected malware. If SmartScreen appears, click **More info** and then **Run anyway**.
 
-![Windows warning](docs/Step1.jpg)
-![Windows warning details](docs/Step2.jpg)
-![Run anyway](docs/Step3.jpg)
+![Windows warning](docs/images/Step1.jpg)
+![Windows warning details](docs/images/Step2.jpg)
+![Run anyway](docs/images/Step3.jpg)
 
 4. Select the original Spotify APK.
 5. Choose **Primary** or **Secondary**.
@@ -49,16 +49,16 @@ The main window is intentionally simple: choose the patch options, then use **AN
 9. Leave **Prevent portrait mode** enabled for BYD use.
 10. Click **ANALYSE APK**.
 
-![Analyse APK](docs/Step4.jpg)
+![Analyse APK](docs/images/Step4.jpg)
 
 11. If the APK is supported, click **PATCH + SIGN**.
 
-![Patch and sign](docs/Step5.jpg)
+![Patch and sign](docs/images/Step5.jpg)
 
 12. Install the generated APK on the BYD infotainment system.
 
-![Install APK](docs/Step6.jpg)
-![Installed app](docs/Step7.jpg)
+![Install APK](docs/images/Step6.jpg)
+![Installed app](docs/images/Step7.jpg)
 
 The patched apps can coexist with each other and with BYD's original `com.spotify.music` installation.
 
