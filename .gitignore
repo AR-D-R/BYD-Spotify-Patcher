@@ -25,4 +25,5 @@ dist/
 
 # IDE
 .vscode/
-.idea/
+.idea/.vs/
+.vs/

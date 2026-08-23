@@ -1,6 +1,6 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
-Write-Host 'BYD Spotify Patcher v0.5.2 single-file portable Windows build'
+Write-Host 'BYD Spotify Patcher v0.6 single-file portable Windows build'
 Write-Host 'Android SDK / Android Studio are needed only on this BUILD PC.'
 Write-Host 'The resulting BYDSpotifyPatcher.exe contains apksigner + a minimal Java runtime.'
 

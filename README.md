@@ -1,80 +1,104 @@
-# BYD Spotify Patcher v0.5.3
+# BYD Spotify Patcher v0.6
 
 Windows tool for patching a **user-supplied Spotify 8.9.76.538 APK** for BYD Android infotainment.
-
-It creates separately installable Spotify instances that can coexist with BYD's factory Spotify app.
 
 The patcher does **not** contain or download Spotify. The original APK is supplied by the user and patched locally on their PC.
 
 ## Features
-* Allows to use fully functional Spotify app within BYD infotainment system. (DJ X, sorting playlists by genre, easy to start radio from a song, albums, lyrics, artists information, etc.)
-* Can generate up to 2 separate Spotify instances that can be installed alongside BYD's factory Spotify. User1 can use SpotifyPlus A logged into User1 account and User2 can use SpotifyPlus B logged into User 2 Spotify account.
-* Similar to the OEM version a patched app will automatically restore playback after the BYD infotainment system restarts.
-* **Left (LHD)** and **Right (RHD)** wide-screen layouts.
-* Custom visible app name. SpotifyPlus as default.
-* Adjustable launcher-icon colour with live preview.
-* Applies larger text and wide-screen UI adjustments
-* Automatic APK patching, signing and verification.
+- Allows to use fully functional Spotify app within BYD infotainment system. (DJ X, sorting playlists by genre, easy to start radio from a song, albums, lyrics, artists information, etc.)
+- Install **Primary** and **Secondary** Spotify clones alongside BYD's factory Spotify app.
+- Keep separate Spotify accounts/profiles in each clone.
+- Applies **BYD-optimised wide-screen UI** fixes.
+- Three **Font size** choices: **Stock**, **Moderate**, or **Large**.
+- **Left (LHD)** or **Right (RHD)** navigation/player panel with visual previews.
+- Custom visible app name. SpotifyPlus as default.
+- Optional **+ badge** on the launcher icon. Adjustable launcher-icon hue with live preview
+- Restores playback after the BYD infotainment system restarts.
+- Automatic APK patching, signing and verification.
 
 ## Supported Spotify version
 
 Currently supported:
 
-* Spotify **8.9.76.538**
-* versionCode **119017142**
+- Spotify **8.9.76.538**
+- versionCode **119017142**
 
-**Download the tested Spotify 8.9.76.538 universal APK from [APKMirror](https://www.apkmirror.com/apk/spotify-ab/spotify/spotify-music-and-podcasts-8-9-76-538-release/spotify-music-and-podcasts-8-9-76-538-2-android-apk-download/).**
+Download the tested universal / nodpi APK from **[APKMirror](https://www.apkmirror.com/apk/spotify-ab/spotify/spotify-music-and-podcasts-8-9-76-538-release/spotify-music-and-podcasts-8-9-76-538-2-android-apk-download/)**.
 
 Other Spotify versions are rejected by **ANALYSE APK** rather than being patched with an untested profile.
 
 ## How to use
 
-1. Download the Windows patcher from the **[Releases](../../releases/latest)** section.
-2. Download the supported Spotify 8.9.76.538 APK.
-3. Start `BYDSpotifyPatcher.exe`. 
-Windows may show a security warning because the patcher is not code-signed with a commercial certificate. This is expected for an independently distributed open-source tool and does not mean Windows has detected malware.
-If SmartScreen appears, click More info and then Run anyway.
+The main window is intentionally simple: choose the patch options, then use **ANALYSE APK** and **PATCH + SIGN**.
 
-![BYD Spotify Patcher](docs/images/Step1.jpg)
-![BYD Spotify Patcher2](docs/images/Step2.jpg)
-![BYD Spotify Patcher3](docs/images/Step3.jpg)
+1. Download the Windows patcher from **[Releases](../../releases/latest)**.
+2. Download the supported Spotify 8.9.76.538 APK.
+3. Start `BYDSpotifyPatcher.exe`.
+
+   Windows may show a security warning because the patcher is not code-signed with a commercial certificate. This is expected for an independently distributed open-source tool and does not mean Windows has detected malware. If SmartScreen appears, click **More info** and then **Run anyway**.
+
+![Windows warning](docs/Step1.jpg)
+![Windows warning details](docs/Step2.jpg)
+![Run anyway](docs/Step3.jpg)
 
 4. Select the original Spotify APK.
 5. Choose **Primary** or **Secondary**.
-6. Optionally change the visible app name and icon colour.
-7. Choose **Left (LHD)** or **Right (RHD)**.
+6. Optionally change the visible app name, icon badge and icon colour.
+7. Choose **Stock**, **Moderate** (recommended), or **Large** font size.
+8. Choose **Left (LHD)** or **Right (RHD)** using the visual panel previews.
+9. Leave **Prevent portrait mode** enabled for BYD use.
+10. Click **ANALYSE APK**.
 
-* **Left (LHD)** — navigation and mini-player remain on the left.
-* **Right (RHD)** — navigation and mini-player are moved to the right while Spotify content remains left-to-right.
+![Analyse APK](docs/Step4.jpg)
 
-8. Click **ANALYSE APK**.
-![BYD Spotify Patcher4](docs/images/Step4.jpg)
+11. If the APK is supported, click **PATCH + SIGN**.
 
-9. If the APK is supported, click **PATCH + SIGN**.
+![Patch and sign](docs/Step5.jpg)
 
-![BYD Spotify Patcher5](docs/images/Step5.jpg)
+12. Install the generated APK on the BYD infotainment system.
 
-10. Install the generated APK on the BYD infotainment system.
-
-![BYD Spotify Patcher6](docs/images/Step6.jpg)
-![BYD Spotify Patcher7](docs/images/Step7.jpg)
+![Install APK](docs/Step6.jpg)
+![Installed app](docs/Step7.jpg)
 
 The patched apps can coexist with each other and with BYD's original `com.spotify.music` installation.
 
+## BYD-optimised UI
+
+v0.6 always applies the established BYD visual/layout profile. It improves the wide-screen spacing, artwork/control sizing and car-friendly layout instead of exposing an unmodified Spotify-layout option.
+
+Choose the panel position at patch time:
+
+- **Left (LHD)** — navigation and mini-player stay on the left.
+- **Right (RHD)** — navigation and mini-player move to the right while Spotify content remains LTR.
+
+### Font size
+
+Font sizing is independent of the BYD visual/layout fixes:
+
+- **Stock** — original Spotify text sizes with the BYD-optimised layout.
+- **Moderate** — the established BYD text enlargement used by the earlier car-tested profile.
+- **Large** — Moderate plus a further roughly 15% increase to the identified Spotify text-size resources.
+
+**Moderate** is the default.
+
+## Portrait-screen fix
+
+Spotify 8.9.76.538 contains several activities that explicitly request portrait orientation. Queue is portrait-locked in the manifest, while fullscreen Lyrics also requests portrait at runtime.
+
+With **Prevent portrait mode** enabled, the patcher removes the known portrait-only requests so those screens follow the BYD display orientation instead.
+
 ## Playback restore
 
-Playback restoration has been tested on BYD infotainment.
-
-If a patched Spotify instance was playing before the vehicle was shut down, that instance can resume playback after the infotainment system restarts.
+Playback restoration has been tested on BYD infotainment. If a patched Spotify instance was playing before the vehicle was shut down, that instance can resume playback after the infotainment system restarts.
 
 ## Download
 
-The current self-contained Windows version is available from:
+The self-contained Windows release is available from **[GitHub Releases](../../releases/latest)**.
 
-**[GitHub Releases](../../releases/latest)**
+No Python, Java, Android Studio or Android SDK is required to use the released Windows version.
 
 ## Notes
 
-This project modifies a user-supplied Spotify APK so cloned instances can coexist with the original BYD installation and work correctly with the BYD wide-screen interface.
+This project modifies a user-supplied Spotify APK so cloned instances can coexist with the original BYD installation and work correctly on the BYD wide-screen interface.
 
 **No Spotify APK, Spotify DEX, Spotify resources or other Spotify binaries are distributed with this project.**

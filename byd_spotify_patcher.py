@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BYD Spotify Patcher v0.5.3.
+"""BYD Spotify Patcher v0.6.
 
 Patches a user-supplied Spotify 8.9.76.538 APK so multiple fixed clone
 identities can coexist with BYD's factory ``com.spotify.music`` installation.
@@ -13,8 +13,10 @@ Core patch profile:
 * package-scoped resources.arsc provider authority patching
 * exact DEX package/process string patching plus DEX SHA-1/Adler32 repair
 * preserve META-INF/services; remove only obsolete signature metadata
-* stable v9 Left and v14 Right BYD wide-screen UI profiles
-* editable visible app label plus optional launcher-icon hue shift
+* always-on BYD-optimised wide-screen visual/layout profile with independent stock/moderate/large font sizing
+* stable Left/LHD and Right/RHD panel placement
+* editable visible app label, optional + badge and independent launcher-icon hue shift
+* optional BYD orientation fix that removes Spotify portrait locks (manifest + runtime)
 * proven BYD RESTORE_PLAYBACK MediaBrowser auto-resume helper (logic unchanged)
 * construct a 4-byte aligned APK and sign with a reusable per-user key
 
@@ -46,13 +48,19 @@ from typing import Callable
 
 from PIL import Image, ImageDraw
 
-APP_VERSION = "0.5.3"
+APP_VERSION = "0.6"
 SUPPORTED_SPOTIFY_VERSION = "8.9.76.538"
 SUPPORTED_SPOTIFY_VERSION_CODE = 119017142
 WIDE_LAYOUT_PATH = "res/layout-w600dp-v13/adaptive_main.xml"
 WIDE_LAYOUT_BASE_SHA256 = "9e25d64fdfd097a1fe544af86439fe674942911fc7f6a12a2ea99321a4a7027e"
 PANEL_LEFT = "left"
 PANEL_RIGHT = "right"
+FONT_SIZE_STOCK = "stock"
+FONT_SIZE_MODERATE = "moderate"
+FONT_SIZE_LARGE = "large"
+PORTRAIT_ORIENTATION_VALUES = {1, 7, 9, 12}  # portrait/sensor/reverse/user portrait
+EXPECTED_MANIFEST_PORTRAIT_LOCKS = 12
+EXPECTED_RUNTIME_PORTRAIT_REQUESTS = 3
 OLD_PKG = "com.spotify.music"
 NEW_PKG = "com.spotify.musib"  # primary/default package; same length as OLD_PKG
 INSTANCE_PRIMARY = "primary"
@@ -186,6 +194,8 @@ class ApkAnalysis:
     resource_matches: dict[str, int]
     dex: list[DexAnalysis]
     target_package: str
+    orientation_manifest_locks: int
+    orientation_runtime_requests: int
     compatible: bool
     warnings: list[str]
 
@@ -205,6 +215,11 @@ class PatchReport:
     package_name: str
     app_label: str
     icon_hue: int
+    icon_badge: bool
+    font_size: str
+    prevent_portrait: bool
+    orientation_manifest_changes: list[str]
+    orientation_dex_changes: dict[str, int]
     manifest_changes: list[tuple[str, str]]
     dex_changes: dict[str, int]
     resource_changes: dict[str, int]
@@ -420,6 +435,177 @@ def patch_dex_exact_package(
     struct.pack_into("<I", b, 8, zlib.adler32(bytes(b[12:])) & 0xFFFFFFFF)
     return bytes(b), count
 
+
+RUNTIME_ORIENTATION_TARGETS = {
+    ("Lcom/spotify/lyrics/fullscreenview/page/LyricsFullscreenPageActivity;", "onCreate"): 1,
+    ("Lcom/spotify/marquee/marquee/MarqueeActivity;", "onStart"): 1,
+    ("Lp/iq10;", "i"): 12,
+}
+
+
+def _dex_exact_string_index(data: bytes, target: str) -> int | None:
+    _size, _off, offsets = _dex_string_table(data)
+    raw_target = target.encode("utf-8")
+    for idx, string_off in enumerate(offsets):
+        try:
+            _chars, leb_len = _read_uleb128(data, string_off)
+        except Exception:
+            continue
+        start = string_off + leb_len
+        if data[start:start + len(raw_target)] == raw_target and data[start + len(raw_target):start + len(raw_target) + 1] == b"\x00":
+            return idx
+    return None
+
+
+def _dex_target_code_items(data: bytes) -> dict[tuple[str, str], int]:
+    """Locate code items for the three known Spotify 8.9 portrait requests."""
+    class_string_idx = {key[0]: _dex_exact_string_index(data, key[0]) for key in RUNTIME_ORIENTATION_TARGETS}
+    method_name_idx = {key[1]: _dex_exact_string_index(data, key[1]) for key in RUNTIME_ORIENTATION_TARGETS}
+    type_ids_size, type_ids_off = struct.unpack_from("<II", data, 64)
+    string_to_type: dict[int, int] = {}
+    wanted_class_strings = {v for v in class_string_idx.values() if v is not None}
+    for i in range(type_ids_size):
+        string_idx = struct.unpack_from("<I", data, type_ids_off + 4 * i)[0]
+        if string_idx in wanted_class_strings:
+            string_to_type[string_idx] = i
+
+    wanted: dict[int, tuple[str, str]] = {}
+    method_ids_size, method_ids_off = struct.unpack_from("<II", data, 88)
+    for key in RUNTIME_ORIENTATION_TARGETS:
+        csi = class_string_idx.get(key[0])
+        nsi = method_name_idx.get(key[1])
+        if csi is None or nsi is None or csi not in string_to_type:
+            continue
+        class_type_idx = string_to_type[csi]
+        for i in range(method_ids_size):
+            class_idx, _proto_idx, name_idx = struct.unpack_from("<HHI", data, method_ids_off + 8 * i)
+            if class_idx == class_type_idx and name_idx == nsi:
+                wanted[i] = key
+
+    if not wanted:
+        return {}
+
+    class_defs_size, class_defs_off = struct.unpack_from("<II", data, 96)
+    result: dict[tuple[str, str], int] = {}
+    wanted_method_ids = set(wanted)
+    wanted_class_type_ids = {
+        string_to_type[csi] for csi in wanted_class_strings if csi in string_to_type
+    }
+    for ci in range(class_defs_size):
+        class_idx, _access, _super, _interfaces, _source, _ann, class_data_off, _static = struct.unpack_from(
+            "<IIIIIIII", data, class_defs_off + 32 * ci
+        )
+        if class_idx not in wanted_class_type_ids or not class_data_off:
+            continue
+        o = class_data_off
+        static_fields, n = _read_uleb128(data, o); o += n
+        instance_fields, n = _read_uleb128(data, o); o += n
+        direct_methods, n = _read_uleb128(data, o); o += n
+        virtual_methods, n = _read_uleb128(data, o); o += n
+        for _ in range(static_fields + instance_fields):
+            _diff, n = _read_uleb128(data, o); o += n
+            _flags, n = _read_uleb128(data, o); o += n
+        for method_count in (direct_methods, virtual_methods):
+            method_idx = 0
+            for _ in range(method_count):
+                diff, n = _read_uleb128(data, o); o += n
+                method_idx += diff
+                _flags, n = _read_uleb128(data, o); o += n
+                code_off, n = _read_uleb128(data, o); o += n
+                if method_idx in wanted_method_ids:
+                    result[wanted[method_idx]] = code_off
+    return result
+
+
+def _dex_set_requested_orientation_id(data: bytes) -> int | None:
+    activity_string = _dex_exact_string_index(data, "Landroid/app/Activity;")
+    name_string = _dex_exact_string_index(data, "setRequestedOrientation")
+    if activity_string is None or name_string is None:
+        return None
+    type_ids_size, type_ids_off = struct.unpack_from("<II", data, 64)
+    activity_type = None
+    for i in range(type_ids_size):
+        if struct.unpack_from("<I", data, type_ids_off + 4 * i)[0] == activity_string:
+            activity_type = i
+            break
+    if activity_type is None:
+        return None
+    method_ids_size, method_ids_off = struct.unpack_from("<II", data, 88)
+    for i in range(method_ids_size):
+        class_idx, _proto_idx, name_idx = struct.unpack_from("<HHI", data, method_ids_off + 8 * i)
+        if class_idx == activity_type and name_idx == name_string:
+            return i
+    return None
+
+
+def patch_runtime_portrait_requests(data: bytes) -> tuple[bytes, list[str]]:
+    """Neutralise the three known direct runtime portrait requests in Spotify 8.9.76.538."""
+    method_ref = _dex_set_requested_orientation_id(data)
+    targets = _dex_target_code_items(data)
+    if method_ref is None or not targets:
+        return data, []
+    b = bytearray(data)
+    changes: list[str] = []
+    for key, code_off in targets.items():
+        if not code_off:
+            continue
+        insns_size = struct.unpack_from("<I", data, code_off + 12)[0]
+        start = code_off + 16
+        units = list(struct.unpack_from("<" + "H" * insns_size, data, start))
+        expected = RUNTIME_ORIENTATION_TARGETS[key]
+        hit = False
+
+        def invoke_matches(inv_i: int, dest_reg: int) -> bool:
+            if inv_i + 2 >= len(units):
+                return False
+            inv = units[inv_i]
+            op = inv & 0xFF
+            if units[inv_i + 1] != method_ref:
+                return False
+            if op == 0x6E:
+                count = (inv >> 12) & 0xF
+                regs = units[inv_i + 2]
+                return count == 2 and ((regs >> 4) & 0xF) == dest_reg
+            if op == 0x74:
+                count = (inv >> 8) & 0xFF
+                first_reg = units[inv_i + 2]
+                return count == 2 and first_reg + 1 == dest_reg
+            return False
+
+        for i, u in enumerate(units):
+            op = u & 0xFF
+            if op == 0x12 and i + 3 < len(units):
+                dest = (u >> 8) & 0xF
+                raw_lit = (u >> 12) & 0xF
+                lit = raw_lit - 16 if raw_lit & 0x8 else raw_lit
+                if lit == expected and invoke_matches(i + 1, dest):
+                    units[i] = (u & 0x0FFF) | 0xF000
+                    hit = True
+                    break
+            elif op == 0x13 and i + 4 < len(units):
+                dest = (u >> 8) & 0xFF
+                raw = units[i + 1]
+                lit = raw - 0x10000 if raw & 0x8000 else raw
+                if lit == expected and invoke_matches(i + 2, dest):
+                    units[i + 1] = 0xFFFF
+                    hit = True
+                    break
+            elif op == 0x14 and i + 5 < len(units):
+                dest = (u >> 8) & 0xFF
+                raw = units[i + 1] | (units[i + 2] << 16)
+                lit = raw - 0x100000000 if raw & 0x80000000 else raw
+                if lit == expected and invoke_matches(i + 3, dest):
+                    units[i + 1] = 0xFFFF; units[i + 2] = 0xFFFF
+                    hit = True
+                    break
+        if hit:
+            struct.pack_into("<" + "H" * len(units), b, start, *units)
+            changes.append(f"{key[0]}->{key[1]}: {expected} -> -1")
+    if not changes:
+        return data, []
+    b[12:32] = hashlib.sha1(bytes(b[32:])).digest()
+    struct.pack_into("<I", b, 8, zlib.adler32(bytes(b[12:])) & 0xFFFFFFFF)
+    return bytes(b), changes
 
 
 # ---- Spotify 8.9.76.538 BYD UI / auto-resume / branding profile helpers ----
@@ -649,6 +835,52 @@ def patch_autoresume_manifest(data, new_pkg: str = NEW_PKG):
     struct.pack_into('<I',out,4,len(out))
     return bytes(out)
 
+
+def patch_manifest_portrait_orientations(data: bytes) -> tuple[bytes, list[str]]:
+    """Replace explicit portrait-family Activity locks with UNSPECIFIED (-1)."""
+    meta = parse_pool(data, u16(data, 2))
+    strings = meta['strings']
+    o = u16(data, 2) + meta['size']
+    chunks: list[bytes] = []
+    changed: list[str] = []
+    while o < len(data):
+        typ, _hs, size = struct.unpack_from('<HHI', data, o)
+        c = bytearray(data[o:o + size])
+        if typ == 0x0102:
+            tag = strings[u32(c, 20)]
+            if tag in ('activity', 'activity-alias'):
+                attr_start, attr_size, attr_count, *_ = struct.unpack_from('<HHHHHH', c, 24)
+                ap = 16 + attr_start
+                activity_name = '<unknown>'
+                orientation_attr = None
+                for i in range(attr_count):
+                    ao = ap + i * attr_size
+                    name_idx = u32(c, ao + 4)
+                    raw_idx = u32(c, ao + 8)
+                    dtype = c[ao + 15]
+                    dval = u32(c, ao + 16)
+                    attr_name = strings[name_idx]
+                    if attr_name == 'name':
+                        if raw_idx != 0xffffffff:
+                            activity_name = strings[raw_idx]
+                        elif dtype == 3 and dval < len(strings):
+                            activity_name = strings[dval]
+                    elif attr_name == 'screenOrientation':
+                        orientation_attr = (ao, dtype, dval)
+                if orientation_attr is not None:
+                    ao, dtype, dval = orientation_attr
+                    if dval in PORTRAIT_ORIENTATION_VALUES:
+                        if dtype != 0x10:
+                            raise PatchError(f'Unexpected screenOrientation data type for {activity_name}: {dtype:#x}')
+                        struct.pack_into('<I', c, ao + 16, 0xffffffff)
+                        changed.append(activity_name)
+        chunks.append(bytes(c))
+        o += size
+    out = bytearray(data[:u16(data, 2) + meta['size']]) + b''.join(chunks)
+    struct.pack_into('<I', out, 4, len(out))
+    return bytes(out), changed
+
+
 # ARSC helpers
 
 def package_pools(data,pkg_off):
@@ -681,9 +913,36 @@ def iter_resource_values(data,rid,complex_items=False):
             return
         o+=csz
 
-def patch_ui_v9_resources(data):
-    b=bytearray(data); changes=[]
-    simple={
+def _apply_simple_dimension_map(data: bytes, simple: dict[int, dict[int, int]]) -> tuple[bytes, list[tuple[int, int, int]]]:
+    b = bytearray(data); changes=[]
+    for rid, m in simple.items():
+        for v in list(iter_resource_values(b, rid, False)):
+            if v['dtype'] == 5 and v['dval'] in m:
+                nv = m[v['dval']]
+                struct.pack_into('<I', b, v['pos'], nv)
+                changes.append((rid, v['dval'], nv))
+    return bytes(b), changes
+
+
+def _apply_text_style_map(data: bytes, styles: dict[int, dict[int, int]]) -> tuple[bytes, list[tuple[int, int, int]]]:
+    b = bytearray(data); changes=[]
+    for rid, m in styles.items():
+        for v in list(iter_resource_values(b, rid, True)):
+            if v['map_name'] == 0x01010095 and v['dtype'] == 5 and v['dval'] in m:
+                nv = m[v['dval']]
+                struct.pack_into('<I', b, v['pos'], nv)
+                changes.append((rid, v['dval'], nv))
+    return bytes(b), changes
+
+
+def patch_ui_byd_visual_resources(data: bytes):
+    """Apply the BYD-optimised non-font geometry/artwork profile.
+
+    These are the established v9 changes for artwork, controls, rows and compact
+    spacing, with every SP/text-size resource deliberately excluded. This lets
+    users keep Spotify's stock font sizes while retaining the car-friendly UI.
+    """
+    simple = {
       0x7f0704c6:{0x00000c01:0x00000f01},
       0x7f0704c9:{0x00003801:0x00004601},
       0x7f070526:{0x00004001:0x00005001},
@@ -698,14 +957,20 @@ def patch_ui_v9_resources(data):
       0x7f0703be:{0x00004001:0x00003001,0x0000a001:0x00003501},
       0x7f070484:{0x00004001:0x00003001,0x0000a001:0x00003501},
       0x7f070486:{0x00004001:0x00003001,0x0000a001:0x00003501},
+    }
+    out, changes = _apply_simple_dimension_map(data, simple)
+    if len(changes) != 22:
+        raise RuntimeError(f'expected 22 BYD visual changes, got {len(changes)}')
+    return out, changes
+
+
+def patch_ui_font_moderate_resources(data: bytes):
+    """Apply the established v9 text enlargement over Spotify stock fonts."""
+    simple = {
       0x7f070a59:{0x00000e02:0x00001402,0x00001002:0x00001602,0x00001202:0x00001902},
       0x7f070a5a:{0x00001202:0x00001b02,0x00001402:0x00001e02,0x00001602:0x00002202},
     }
-    for rid,m in simple.items():
-        for v in list(iter_resource_values(b,rid,False)):
-            if v['dtype']==5 and v['dval'] in m:
-                nv=m[v['dval']]; struct.pack_into('<I',b,v['pos'],nv); changes.append((rid,v['dval'],nv))
-    styles={
+    styles = {
       0x7f140367:{0x00000902:0x00000d02},
       0x7f140369:{0x00001002:0x00001702},
       0x7f14036a:{0x00001002:0x00001702},
@@ -717,12 +982,49 @@ def patch_ui_v9_resources(data):
       0x7f140378:{0x00001802:0x00002202},
       0x7f14037a:{0x00001402:0x00001d02},
     }
-    for rid,m in styles.items():
-        for v in list(iter_resource_values(b,rid,True)):
-            if v['map_name']==0x01010095 and v['dtype']==5 and v['dval'] in m:
-                nv=m[v['dval']]; struct.pack_into('<I',b,v['pos'],nv); changes.append((rid,v['dval'],nv))
-    if len(changes)!=40: raise RuntimeError(f'expected 40 v9 UI changes, got {len(changes)}')
-    return bytes(b),changes
+    out, simple_changes = _apply_simple_dimension_map(data, simple)
+    out, style_changes = _apply_text_style_map(out, styles)
+    changes = simple_changes + style_changes
+    if len(changes) != 18:
+        raise RuntimeError(f'expected 18 moderate-font changes, got {len(changes)}')
+    return out, changes
+
+
+def patch_ui_font_large_resources(data: bytes):
+    """Increase the already-moderate text sizes by roughly another 15%."""
+    simple = {
+      0x7f070a59:{0x00001402:0x00001702,0x00001602:0x00001902,0x00001902:0x00001d02},
+      0x7f070a5a:{0x00001b02:0x00001f02,0x00001e02:0x00002302,0x00002202:0x00002702},
+    }
+    styles = {
+      0x7f140367:{0x00000d02:0x00000f02},
+      0x7f140369:{0x00001702:0x00001a02},
+      0x7f14036a:{0x00001702:0x00001a02},
+      0x7f14036b:{0x00001202:0x00001502},
+      0x7f14036c:{0x00001202:0x00001502},
+      0x7f14036f:{0x00001002:0x00001202},
+      0x7f140372:{0x00001002:0x00001202},
+      0x7f140375:{0x00000e02:0x00001002},
+      0x7f140378:{0x00002202:0x00002702},
+      0x7f14037a:{0x00001d02:0x00002102},
+    }
+    out, simple_changes = _apply_simple_dimension_map(data, simple)
+    out, style_changes = _apply_text_style_map(out, styles)
+    changes = simple_changes + style_changes
+    if len(changes) != 18:
+        raise RuntimeError(f'expected 18 large-font changes, got {len(changes)}')
+    return out, changes
+
+
+def patch_ui_v9_resources(data: bytes):
+    """Compatibility fingerprint and legacy v9 output: BYD visuals + moderate fonts."""
+    out, visual = patch_ui_byd_visual_resources(data)
+    out, fonts = patch_ui_font_moderate_resources(out)
+    changes = visual + fonts
+    if len(changes) != 40:
+        raise RuntimeError(f'expected 40 v9 UI changes, got {len(changes)}')
+    return out, changes
+
 
 FG_RID = ADAPTIVE_FOREGROUND_RID
 OLD_FG_PATH = OLD_ADAPTIVE_FOREGROUND_PATH
@@ -784,14 +1086,18 @@ def load_preview_icon_from_apk(apk_path: str) -> Image.Image | None:
     return None
 
 
-def build_logo_preview_image(source_icon: Image.Image | None, hue: int, size: int = 112) -> Image.Image:
-    """Render the same + mark and hue rotation used by the APK branding patch."""
+def build_logo_preview_image(
+    source_icon: Image.Image | None, hue: int, add_badge: bool = True, size: int = 112
+) -> Image.Image:
+    """Render the same optional + mark and hue rotation used by APK branding."""
     hue = normalise_hue(hue)
     canvas = Image.new("RGBA", (size, size), (245, 245, 245, 255))
     if source_icon is None:
         return canvas
-
-    preview = shift_hue(add_plus(source_icon.copy()), hue)
+    preview = source_icon.copy().convert('RGBA')
+    if add_badge:
+        preview = add_plus(preview)
+    preview = shift_hue(preview, hue)
     max_icon = max(32, size - 18)
     preview.thumbnail((max_icon, max_icon), Image.Resampling.LANCZOS)
     x = (size - preview.width) // 2
@@ -800,25 +1106,50 @@ def build_logo_preview_image(source_icon: Image.Image | None, hue: int, size: in
     return canvas
 
 
-def patch_branding(resources, source_icons, app_label: str = NEW_APP_LABEL, icon_hue: int = 0):
+def patch_branding(
+    resources: bytes,
+    source_icons: dict[str, bytes],
+    app_label: str = NEW_APP_LABEL,
+    icon_hue: int = 0,
+    add_badge: bool = True,
+):
+    """Patch app label and, when requested, launcher artwork.
+
+    With add_badge=False and hue=0 the original Spotify icon resources are kept
+    byte-for-byte; only the visible app label changes.
+    """
     app_label = validate_app_label(app_label)
     icon_hue = normalise_hue(icon_hue)
+    modify_icon = bool(add_badge or icon_hue != 0)
     arsc=bytearray(resources); original=parse_pool(arsc,u16(arsc,2)); tmp=list(original['strings']); idxmap={}
-    for s in [app_label,NEW_FG_PATH]:
-        if s in tmp: idx=tmp.index(s)
-        else: idx=len(tmp);tmp.append(s)
-        idxmap[s]=idx
-    for rid,new_idx,expect_key in [(APP_NAME_RID,idxmap[app_label],'app_name'),(FG_RID,idxmap[NEW_FG_PATH],'ic_launcher_renaissance_foreground')]:
+    extra = [app_label] + ([NEW_FG_PATH] if modify_icon else [])
+    for item in extra:
+        if item in tmp: idx=tmp.index(item)
+        else: idx=len(tmp);tmp.append(item)
+        idxmap[item]=idx
+    patches=[(APP_NAME_RID,idxmap[app_label],'app_name')]
+    if modify_icon:
+        patches.append((FG_RID,idxmap[NEW_FG_PATH],'ic_launcher_renaissance_foreground'))
+    for rid,new_idx,expect_key in patches:
         vals=find_value_positions(arsc,rid)
         if not vals: raise RuntimeError(f'RID {rid:#x} not found')
         for v in vals:
             if v['key']!=expect_key or v['dtype']!=3: raise RuntimeError((rid,v))
             struct.pack_into('<I',arsc,v['pos'],new_idx)
-    arsc,idxs=rebuild_global_pool(arsc,[app_label,NEW_FG_PATH])
+    arsc,_idxs=rebuild_global_pool(arsc,extra)
+    if not modify_icon:
+        return bytes(arsc),{},None
     icon_repl={}
     for path,bb in source_icons.items():
-        im=Image.open(io.BytesIO(bb)); out=shift_hue(add_plus(im), icon_hue); buf=io.BytesIO(); out.save(buf,'WEBP',lossless=True,quality=100,method=6); icon_repl[path]=buf.getvalue()
-    base=shift_hue(add_plus(Image.open(io.BytesIO(source_icons['res/mipmap-xxxhdpi-v4/ic_launcher_renaissance.webp']))), icon_hue); base=base.resize((240,240),Image.Resampling.LANCZOS)
+        with Image.open(io.BytesIO(bb)) as source:
+            out=source.convert('RGBA')
+            if add_badge: out=add_plus(out)
+            out=shift_hue(out, icon_hue)
+            buf=io.BytesIO(); out.save(buf,'WEBP',lossless=True,quality=100,method=6); icon_repl[path]=buf.getvalue()
+    with Image.open(io.BytesIO(source_icons['res/mipmap-xxxhdpi-v4/ic_launcher_renaissance.webp'])) as source:
+        base=source.convert('RGBA')
+        if add_badge: base=add_plus(base)
+        base=shift_hue(base,icon_hue).resize((240,240),Image.Resampling.LANCZOS)
     canvas=Image.new('RGBA',(432,432),(0,0,0,0)); canvas.alpha_composite(base,((432-240)//2,(432-240)//2)); buf=io.BytesIO(); canvas.save(buf,'PNG',optimize=True)
     return bytes(arsc),icon_repl,buf.getvalue()
 
@@ -971,6 +1302,14 @@ def analyse_apk(
                 f"{spotify_version or 'unknown'} ({spotify_version_code if spotify_version_code is not None else 'unknown'})."
             )
 
+        _orientation_preview, portrait_manifest_activities = patch_manifest_portrait_orientations(manifest)
+        orientation_manifest_locks = len(portrait_manifest_activities)
+        if orientation_manifest_locks != EXPECTED_MANIFEST_PORTRAIT_LOCKS:
+            warnings.append(
+                f"Expected {EXPECTED_MANIFEST_PORTRAIT_LOCKS} portrait-locked manifest activities; "
+                f"found {orientation_manifest_locks}."
+            )
+
         repl = _manifest_replacements(target_package)
         manifest_patch_count = sum(1 for x in strings if x in repl)
         unknown_manifest = _unknown_manifest_strings(strings)
@@ -1015,7 +1354,18 @@ def analyse_apk(
             (i.filename for i in zin.infolist() if re.fullmatch(r"classes(?:\d+)?\.dex", i.filename)),
             key=lambda n: (len(n), n),
         )
-        dex_results = [analyse_dex(name, zin.read(name), target_package) for name in dex_entries]
+        dex_results = []
+        orientation_runtime_requests = 0
+        for name in dex_entries:
+            dex_payload = zin.read(name)
+            dex_results.append(analyse_dex(name, dex_payload, target_package))
+            _orientation_preview, orientation_hits = patch_runtime_portrait_requests(dex_payload)
+            orientation_runtime_requests += len(orientation_hits)
+        if orientation_runtime_requests != EXPECTED_RUNTIME_PORTRAIT_REQUESTS:
+            warnings.append(
+                f"Expected {EXPECTED_RUNTIME_PORTRAIT_REQUESTS} direct runtime portrait requests; "
+                f"found {orientation_runtime_requests}."
+            )
         if any(d.error for d in dex_results):
             warnings.append("At least one DEX file could not be structurally analysed.")
         if not any(d.exact_package_occurrences for d in dex_results):
@@ -1042,6 +1392,8 @@ def analyse_apk(
         and bool(resource_matches)
         and ui_profile_ok
         and wide_layout_sha == WIDE_LAYOUT_BASE_SHA256
+        and orientation_manifest_locks == EXPECTED_MANIFEST_PORTRAIT_LOCKS
+        and orientation_runtime_requests == EXPECTED_RUNTIME_PORTRAIT_REQUESTS
         and len(dex_results) == 7
         and any(d.exact_package_occurrences for d in dex_results)
         and all(d.sort_safe and not d.error for d in dex_results)
@@ -1053,7 +1405,7 @@ def analyse_apk(
         size_bytes=src.stat().st_size,
         spotify_version=spotify_version,
         spotify_version_code=spotify_version_code,
-        profile_name=f"Spotify {SUPPORTED_SPOTIFY_VERSION} / BYD v9-v14",
+        profile_name=f"Spotify {SUPPORTED_SPOTIFY_VERSION} / BYD v0.6",
         wide_layout_sha256=wide_layout_sha,
         dex_count=len(dex_results),
         native_abis=abis,
@@ -1063,6 +1415,8 @@ def analyse_apk(
         resource_matches=resource_matches,
         dex=dex_results,
         target_package=target_package,
+        orientation_manifest_locks=orientation_manifest_locks,
+        orientation_runtime_requests=orientation_runtime_requests,
         compatible=compatible,
         warnings=warnings,
     )
@@ -1088,17 +1442,25 @@ def patch_apk(
     instance: str = INSTANCE_PRIMARY,
     app_label: str | None = None,
     icon_hue: int | float | None = None,
+    icon_badge: bool = True,
+    font_size: str = FONT_SIZE_MODERATE,
+    prevent_portrait: bool = True,
 ) -> PatchReport:
     log = log or (lambda _s: None)
     panel_side = panel_side.lower().strip()
     if panel_side not in (PANEL_LEFT, PANEL_RIGHT):
         raise PatchError("panel_side must be 'left' or 'right'")
+    font_size = (font_size or FONT_SIZE_MODERATE).lower().strip()
+    if font_size not in (FONT_SIZE_STOCK, FONT_SIZE_MODERATE, FONT_SIZE_LARGE):
+        raise PatchError("font_size must be 'stock', 'moderate' or 'large'")
 
     cfg = get_instance_config(instance)
     instance = instance.lower().strip()
     target_package = cfg["package"]
     app_label = validate_app_label(app_label if app_label is not None else cfg["label"])
     icon_hue = normalise_hue(cfg["hue"] if icon_hue is None else icon_hue)
+    icon_badge = bool(icon_badge)
+    prevent_portrait = bool(prevent_portrait)
 
     src = Path(input_path)
     out = Path(output_path)
@@ -1119,10 +1481,19 @@ def patch_apk(
     log(f"Input SHA-256: {input_sha}")
     log(f"App instance: {cfg['title']} — {target_package}")
     log(f"Display name: {app_label}")
-    log(f"Launcher icon hue shift: {icon_hue}°")
-    log("Panel profile: " + ("LEFT / LHD (v9 layout)" if panel_side == PANEL_LEFT else "RIGHT / RHD (v14 layout)"))
+    log(f"Launcher icon: {'+ badge' if icon_badge else 'no badge'}, hue {icon_hue}°")
+    font_text = {
+        FONT_SIZE_STOCK: "STOCK Spotify fonts",
+        FONT_SIZE_MODERATE: "MODERATE enlarged fonts",
+        FONT_SIZE_LARGE: "LARGE enlarged fonts",
+    }[font_size]
+    side_text = "LEFT / LHD" if panel_side == PANEL_LEFT else "RIGHT / RHD"
+    log(f"UI layout: BYD optimised — {side_text}; font size: {font_text}")
+    log(f"Portrait prevention: {'ON' if prevent_portrait else 'OFF'}")
 
     manifest_changes: list[tuple[str, str]] = []
+    orientation_manifest_changes: list[str] = []
+    orientation_dex_changes: dict[str, int] = {}
     dex_changes: dict[str, int] = {}
     resource_changes: dict[str, int] = {}
     removed_signatures: list[str] = []
@@ -1141,7 +1512,15 @@ def patch_apk(
                     + ", ".join(unknown_manifest)
                 )
             patched_manifest = patch_autoresume_manifest(patched_manifest, target_package)
-            log("BYD RESTORE_PLAYBACK auto-resume service injected.")
+            log("BYD RESTORE_PLAYBACK auto-resume service injected (logic unchanged).")
+            if prevent_portrait:
+                patched_manifest, orientation_manifest_changes = patch_manifest_portrait_orientations(patched_manifest)
+                if len(orientation_manifest_changes) != EXPECTED_MANIFEST_PORTRAIT_LOCKS:
+                    raise PatchError(
+                        f"Portrait manifest profile mismatch: expected {EXPECTED_MANIFEST_PORTRAIT_LOCKS}, "
+                        f"patched {len(orientation_manifest_changes)}"
+                    )
+                log(f"Removed {len(orientation_manifest_changes)} explicit manifest portrait locks.")
 
             resources = zin.read("resources.arsc")
             for old, new_value in _resource_replacements(target_package).items():
@@ -1152,17 +1531,33 @@ def patch_apk(
                     resources = resources.replace(old, new_value)
                     resource_changes[old.decode("ascii")] = count
 
-            resources, ui_changes = patch_ui_v9_resources(resources)
-            log(f"Applied proven v9 compact/larger-text resource profile ({len(ui_changes)} resource values).")
+            resources, visual_changes = patch_ui_byd_visual_resources(resources)
+            ui_changes.extend(visual_changes)
+            log(f"Applied BYD optimised visual/layout profile ({len(visual_changes)} non-font resource values).")
+
+            if font_size in (FONT_SIZE_MODERATE, FONT_SIZE_LARGE):
+                resources, moderate_font_changes = patch_ui_font_moderate_resources(resources)
+                ui_changes.extend(moderate_font_changes)
+                log(f"Applied moderate font-size profile ({len(moderate_font_changes)} text resource values).")
+                if font_size == FONT_SIZE_LARGE:
+                    resources, large_font_changes = patch_ui_font_large_resources(resources)
+                    ui_changes.extend(large_font_changes)
+                    log(f"Applied large font-size step (+{len(large_font_changes)} text resource values).")
+            else:
+                log("Kept Spotify stock font sizes.")
 
             source_icons = {p: zin.read(p) for p in DENSITY_ICON_PATHS}
             resources, icon_replacements, adaptive_png = patch_branding(
-                resources, source_icons, app_label, icon_hue
+                resources, source_icons, app_label, icon_hue, icon_badge
             )
-            log(f"Applied {app_label!r} app label, '+' launcher mark and {icon_hue}° hue shift.")
+            if icon_replacements:
+                log(f"Applied launcher icon hue {icon_hue}° with {'+' if icon_badge else 'no'} badge.")
+            else:
+                log("Kept original Spotify launcher artwork; changed visible app name only.")
 
             wide_layout = zin.read(WIDE_LAYOUT_PATH)
-            if panel_side == PANEL_RIGHT:
+            use_right_helper = panel_side == PANEL_RIGHT
+            if use_right_helper:
                 wide_layout = patch_rhs_layout(wide_layout, target_package)
                 log("Applied proven v14 right-side panel transformation with LTR content containers.")
 
@@ -1172,24 +1567,25 @@ def patch_apk(
                 if i.filename.startswith("META-INF/services/")
             }
 
-            ltr_dex = retarget_helper_dex(base64.b64decode(LTR_FRAME_DEX_B64), target_package)
             auto_dex = retarget_helper_dex(base64.b64decode(AUTO_RESUME_DEX_B64), target_package)
             inject_dex: list[tuple[str, bytes]]
-            if panel_side == PANEL_RIGHT:
+            if use_right_helper:
+                ltr_dex = retarget_helper_dex(base64.b64decode(LTR_FRAME_DEX_B64), target_package)
                 inject_dex = [("classes8.dex", ltr_dex), ("classes9.dex", auto_dex)]
             else:
                 inject_dex = [("classes8.dex", auto_dex)]
             if any(name in names for name, _ in inject_dex):
                 raise PatchError("Input already contains a DEX slot reserved by the BYD patch profile")
 
+            runtime_orientation_total = 0
             with zipfile.ZipFile(out, "w", allowZip64=True) as zout:
                 for info in zin.infolist():
                     name = info.filename
                     if is_v1_signature_metadata(name):
                         removed_signatures.append(name)
                         continue
-                    if name == OLD_ADAPTIVE_FOREGROUND_PATH:
-                        # resources.arsc now points to our PNG foreground.
+                    if adaptive_png is not None and name == OLD_ADAPTIVE_FOREGROUND_PATH:
+                        # resources.arsc points to our generated PNG only when icon artwork changes.
                         continue
 
                     if name == "AndroidManifest.xml":
@@ -1206,6 +1602,13 @@ def patch_apk(
                             payload, count = patch_dex_exact_package(payload, target_package)
                             if count:
                                 dex_changes[name] = count
+                            if prevent_portrait:
+                                payload, orientation_hits = patch_runtime_portrait_requests(payload)
+                                if orientation_hits:
+                                    orientation_dex_changes[name] = len(orientation_hits)
+                                    runtime_orientation_total += len(orientation_hits)
+                                    for hit in orientation_hits:
+                                        log("Orientation runtime fix: " + hit)
 
                     ni = _copy_zipinfo(info)
                     if ni.compress_type == zipfile.ZIP_STORED:
@@ -1213,9 +1616,16 @@ def patch_apk(
                         _add_alignment_extra(ni, current, 4)
                     zout.writestr(ni, payload, compress_type=ni.compress_type, compresslevel=6)
 
-                _write_added_deflated(zout, NEW_ADAPTIVE_FOREGROUND_PATH, adaptive_png)
+                if adaptive_png is not None:
+                    _write_added_deflated(zout, NEW_ADAPTIVE_FOREGROUND_PATH, adaptive_png)
                 for dex_name, dex_payload in inject_dex:
                     _write_added_deflated(zout, dex_name, dex_payload)
+
+            if prevent_portrait and runtime_orientation_total != EXPECTED_RUNTIME_PORTRAIT_REQUESTS:
+                raise PatchError(
+                    f"Runtime portrait profile mismatch: expected {EXPECTED_RUNTIME_PORTRAIT_REQUESTS}, "
+                    f"patched {runtime_orientation_total}"
+                )
     except Exception:
         try:
             out.unlink(missing_ok=True)
@@ -1238,15 +1648,21 @@ def patch_apk(
             out.unlink(missing_ok=True)
             raise PatchError("META-INF/services runtime files were not preserved exactly")
 
-        for name in dex_changes:
+        modified_dex_names = set(dex_changes) | set(orientation_dex_changes)
+        for name in modified_dex_names:
             d = zout.read(name)
             if d[12:32] != hashlib.sha1(d[32:]).digest():
                 raise PatchError(f"DEX SHA-1 signature validation failed: {name}")
             if struct.unpack_from("<I", d, 8)[0] != (zlib.adler32(d[12:]) & 0xFFFFFFFF):
                 raise PatchError(f"DEX Adler32 validation failed: {name}")
-            old_exact = bytes([len(OLD_PKG)]) + OLD_PKG.encode() + b"\x00"
-            if old_exact in d:
-                raise PatchError(f"Old exact package/process string remains in {name}")
+            if name in dex_changes:
+                old_exact = bytes([len(OLD_PKG)]) + OLD_PKG.encode() + b"\x00"
+                if old_exact in d:
+                    raise PatchError(f"Old exact package/process string remains in {name}")
+            if prevent_portrait:
+                _test, remaining_hits = patch_runtime_portrait_requests(d)
+                if remaining_hits:
+                    raise PatchError(f"Runtime portrait request remains in {name}: {remaining_hits}")
 
         helper_pkg_bytes = target_package.replace('.', '/').encode('ascii')
         for helper_name, _ in inject_dex:
@@ -1258,20 +1674,29 @@ def patch_apk(
             if helper_pkg_bytes not in d:
                 raise PatchError(f"Injected helper DEX package retarget failed: {helper_name}")
 
-        out_manifest_strings, _ = _scan_binary_manifest(zout.read("AndroidManifest.xml"))
+        out_manifest = zout.read("AndroidManifest.xml")
+        out_manifest_strings, _ = _scan_binary_manifest(out_manifest)
         if target_package + ".AutoResumeService" not in out_manifest_strings:
             raise PatchError("Auto-resume service manifest verification failed")
         if "byd.intent.action.RESTORE_PLAYBACK" not in out_manifest_strings:
             raise PatchError("BYD restore action manifest verification failed")
+        if prevent_portrait:
+            _test_manifest, remaining_manifest = patch_manifest_portrait_orientations(out_manifest)
+            if remaining_manifest:
+                raise PatchError("Explicit portrait manifest locks remain: " + ", ".join(remaining_manifest))
 
         out_resources = zout.read("resources.arsc")
         gp = parse_pool(out_resources, u16(out_resources, 2))["strings"]
-        if app_label not in gp or NEW_ADAPTIVE_FOREGROUND_PATH not in gp:
-            raise PatchError("App branding verification failed")
+        if app_label not in gp:
+            raise PatchError("App label verification failed")
+        if adaptive_png is not None and NEW_ADAPTIVE_FOREGROUND_PATH not in gp:
+            raise PatchError("Launcher branding verification failed")
+        if adaptive_png is None and OLD_ADAPTIVE_FOREGROUND_PATH not in zout.namelist():
+            raise PatchError("Original launcher foreground was not preserved")
 
         layout_sha = hashlib.sha256(zout.read(WIDE_LAYOUT_PATH)).hexdigest()
         expected_layout = zin.read(WIDE_LAYOUT_PATH)
-        if panel_side == PANEL_RIGHT:
+        if use_right_helper:
             expected_layout = patch_rhs_layout(expected_layout, target_package)
         expected_layout_sha = hashlib.sha256(expected_layout).hexdigest()
         if layout_sha != expected_layout_sha:
@@ -1289,6 +1714,11 @@ def patch_apk(
         package_name=target_package,
         app_label=app_label,
         icon_hue=icon_hue,
+        icon_badge=icon_badge,
+        font_size=font_size,
+        prevent_portrait=prevent_portrait,
+        orientation_manifest_changes=orientation_manifest_changes,
+        orientation_dex_changes=orientation_dex_changes,
         manifest_changes=manifest_changes,
         dex_changes=dex_changes,
         resource_changes=resource_changes,
@@ -1774,6 +2204,9 @@ def patch_and_sign(
     instance: str = INSTANCE_PRIMARY,
     app_label: str | None = None,
     icon_hue: int | float | None = None,
+    icon_badge: bool = True,
+    font_size: str = FONT_SIZE_MODERATE,
+    prevent_portrait: bool = True,
 ) -> PatchReport:
     log = log or print
     output = Path(output_path)
@@ -1782,6 +2215,8 @@ def patch_and_sign(
         report = patch_apk(
             input_path, unsigned, panel_side, log,
             instance=instance, app_label=app_label, icon_hue=icon_hue,
+            icon_badge=icon_badge, font_size=font_size,
+            prevent_portrait=prevent_portrait,
         )
         sign_apk(unsigned, output, log)
         report.output_path = output
@@ -1812,6 +2247,7 @@ def _analysis_text(a: ApkAnalysis) -> str:
         f"Size: {_format_size(a.size_bytes)}",
         f"DEX files: {a.dex_count}",
         f"Exact process/package markers: {a.total_dex_package_occurrences}",
+        f"Portrait locks: manifest={a.orientation_manifest_locks}, runtime={a.orientation_runtime_requests}",
         f"Native ABIs: {', '.join(a.native_abis) if a.native_abis else 'none'}",
         f"META-INF/services files: {len(a.services)}",
         f"Known manifest identity strings: {a.manifest_patch_count}",
@@ -1858,6 +2294,8 @@ def export_diagnostics(a: ApkAnalysis, destination: str | Path) -> Path:
         "manifest_patch_count": a.manifest_patch_count,
         "unknown_manifest_strings": a.unknown_manifest_strings,
         "resource_matches": a.resource_matches,
+        "orientation_manifest_locks": a.orientation_manifest_locks,
+        "orientation_runtime_requests": a.orientation_runtime_requests,
         "warnings": a.warnings,
         "dex": [asdict(d) for d in a.dex],
     }
@@ -1908,25 +2346,24 @@ def run_gui() -> None:
     # Keep the log compact on shorter/scaled desktops so the action/signing
     # controls at the bottom are visible immediately without manual resizing.
     _work_x, _work_y, _work_w, _work_h = desktop_work_area()
-    if _work_h <= 760:
-        log_lines = 4
-    elif _work_h <= 820:
-        log_lines = 7
+    if _work_h <= 820:
+        log_lines = 3
     elif _work_h <= 950:
-        log_lines = 10
+        log_lines = 5
     elif _work_h <= 1100:
-        log_lines = 13
+        log_lines = 8
     else:
-        log_lines = 16
+        log_lines = 10
 
     input_var = tk.StringVar()
     output_var = tk.StringVar()
     status_var = tk.StringVar(value="Select an original Spotify APK (com.spotify.music).")
     compat_var = tk.StringVar(value="Not analysed")
-    key_var = tk.StringVar(value="Signing key: will be created automatically")
-    signer_var = tk.StringVar(value="Signing engine: " + signing_engine_status())
     panel_var = tk.StringVar(value=PANEL_RIGHT)
-    panel_desc_var = tk.StringVar(value="Right / RHD: v9 text + compact lists, with the v14 navigation/player panel moved to the right.")
+    panel_desc_var = tk.StringVar(value="Right / RHD: navigation/player panel on the right.")
+    font_size_var = tk.StringVar(value=FONT_SIZE_MODERATE)
+    prevent_portrait_var = tk.BooleanVar(value=True)
+    icon_badge_var = tk.BooleanVar(value=True)
     instance_var = tk.StringVar(value=INSTANCE_PRIMARY)
     app_label_var = tk.StringVar(value=INSTANCE_CONFIG[INSTANCE_PRIMARY]["label"])
     hue_var = tk.IntVar(value=INSTANCE_CONFIG[INSTANCE_PRIMARY]["hue"])
@@ -1936,13 +2373,13 @@ def run_gui() -> None:
     preview_cache = {"apk_path": None, "icon": None, "photo": None}
     last_analysis: dict[str, ApkAnalysis | None] = {"value": None}
 
-    frm = ttk.Frame(root, padding=14)
+    frm = ttk.Frame(root, padding=10)
     frm.pack(fill="both", expand=True)
     ttk.Label(frm, text="BYD Spotify Patcher", font=("Segoe UI", 18, "bold")).pack(anchor="w")
     ttk.Label(
         frm,
         text=f"Spotify {SUPPORTED_SPOTIFY_VERSION} BYD profile. Spotify is supplied by the user and patched locally.",
-    ).pack(anchor="w", pady=(0, 12))
+    ).pack(anchor="w", pady=(0, 7))
 
     row1 = ttk.Frame(frm)
     row1.pack(fill="x", pady=4)
@@ -1974,15 +2411,27 @@ def run_gui() -> None:
 
     ttk.Button(row2, text="Save as…", command=browse_output).pack(side="left")
 
-    profile_row = ttk.Frame(frm)
-    profile_row.pack(fill="x", pady=(8, 2))
+    # Compact two-column layout keeps all essential controls visible on lower-resolution
+    # laptop screens. Branding stays on the left; display choices and the two main
+    # actions live in the right-hand column.
+    settings = ttk.Frame(frm)
+    settings.pack(fill="x", pady=(8, 2))
+    settings.columnconfigure(0, weight=4)
+    settings.columnconfigure(1, weight=5)
 
-    profile_controls = ttk.Frame(profile_row)
+    left_col = ttk.LabelFrame(settings, text="App / branding", padding=(10, 8))
+    left_col.grid(row=0, column=0, sticky="nsew", padx=(0, 2))
+    right_col = ttk.LabelFrame(settings, text="BYD display", padding=(10, 8))
+    right_col.grid(row=0, column=1, sticky="nsew", padx=(2, 0))
+
+    brand_area = ttk.Frame(left_col)
+    brand_area.pack(fill="x", anchor="n")
+    profile_controls = ttk.Frame(brand_area)
     profile_controls.pack(side="left", fill="x", expand=True)
 
     instance_row = ttk.Frame(profile_controls)
     instance_row.pack(fill="x", pady=(0, 2))
-    ttk.Label(instance_row, text="App instance (for separate Spotify profiles)").pack(side="left")
+    ttk.Label(instance_row, text="App instance", width=14).pack(side="left")
 
     def update_instance():
         cfg = get_instance_config(instance_var.get())
@@ -2000,37 +2449,45 @@ def run_gui() -> None:
 
     ttk.Radiobutton(
         instance_row, text="Primary", variable=instance_var, value=INSTANCE_PRIMARY, command=update_instance
-    ).pack(side="left", padx=(12, 12))
+    ).pack(side="left", padx=(4, 10))
     ttk.Radiobutton(
         instance_row, text="Secondary", variable=instance_var, value=INSTANCE_SECONDARY, command=update_instance
-    ).pack(side="left", padx=(0, 12))
-    ttk.Label(profile_controls, textvariable=instance_desc_var).pack(anchor="w", padx=(166, 0), pady=(0, 2))
+    ).pack(side="left")
+    ttk.Label(profile_controls, textvariable=instance_desc_var, wraplength=255).pack(anchor="w", padx=(108, 0), pady=(0, 1))
 
     package_row = ttk.Frame(profile_controls)
     package_row.pack(fill="x", pady=2)
-    ttk.Label(package_row, text="Internal package", width=20).pack(side="left")
-    ttk.Label(package_row, textvariable=package_var).pack(side="left", padx=6)
+    ttk.Label(package_row, text="Internal package", width=14).pack(side="left")
+    ttk.Label(package_row, textvariable=package_var).pack(side="left", padx=4)
 
     label_row = ttk.Frame(profile_controls)
     label_row.pack(fill="x", pady=2)
-    ttk.Label(label_row, text="Visible app name", width=20).pack(side="left")
-    ttk.Entry(label_row, textvariable=app_label_var, width=30).pack(side="left", padx=6)
-    ttk.Label(label_row, text=f"max {MAX_APP_LABEL_LEN} characters").pack(side="left")
+    ttk.Label(label_row, text="Visible app name", width=14).pack(side="left")
+    ttk.Entry(label_row, textvariable=app_label_var, width=18).pack(side="left", padx=4)
+    ttk.Label(label_row, text=f"max {MAX_APP_LABEL_LEN}").pack(side="left", padx=(3, 0))
+
+    badge_row = ttk.Frame(profile_controls)
+    badge_row.pack(fill="x", pady=(2, 0))
+    ttk.Label(badge_row, text="Launcher icon", width=14).pack(side="left")
+    ttk.Checkbutton(
+        badge_row, text="Add + badge", variable=icon_badge_var
+    ).pack(side="left", padx=(4, 6))
+    ttk.Label(badge_row, text="off = stock").pack(side="left")
 
     hue_row = ttk.Frame(profile_controls)
-    hue_row.pack(fill="x", pady=(2, 6))
-    ttk.Label(hue_row, text="Logo hue shift", width=20).pack(side="left")
+    hue_row.pack(fill="x", pady=(2, 2))
+    ttk.Label(hue_row, text="Logo hue shift", width=14).pack(side="left")
     tk.Scale(
         hue_row, from_=0, to=359, orient="horizontal", variable=hue_var, resolution=1,
-        showvalue=True, length=360, highlightthickness=0
+        showvalue=True, length=150, highlightthickness=0
     ).pack(side="left", padx=2)
-    ttk.Label(hue_row, text="degrees (0 = original green)").pack(side="left", padx=(6, 0))
+    ttk.Label(hue_row, text="0° = original").pack(side="left", padx=(4, 0))
 
-    preview_box = ttk.LabelFrame(profile_row, text="Logo preview", padding=6)
-    preview_box.pack(side="right", padx=(12, 4), anchor="n")
+    preview_box = ttk.LabelFrame(brand_area, text="Logo", padding=5)
+    preview_box.pack(side="right", padx=(8, 0), anchor="n")
     preview_label = ttk.Label(preview_box, anchor="center")
     preview_label.pack()
-    ttk.Label(preview_box, textvariable=preview_note_var, anchor="center").pack(fill="x", pady=(3, 0))
+    ttk.Label(preview_box, textvariable=preview_note_var, anchor="center").pack(fill="x", pady=(2, 0))
 
     def refresh_logo_preview(*_):
         apk_path = input_var.get().strip()
@@ -2043,43 +2500,157 @@ def run_gui() -> None:
         except (PatchError, tk.TclError):
             return
 
-        img = build_logo_preview_image(preview_cache["icon"], hue, size=112)
+        img = build_logo_preview_image(
+            preview_cache["icon"], hue, add_badge=bool(icon_badge_var.get()), size=80
+        )
         photo = ImageTk.PhotoImage(img)
         preview_cache["photo"] = photo
         preview_label.configure(image=photo)
-        preview_note_var.set(f"Hue {hue}°" if preview_cache["icon"] is not None else "Select an APK")
+        if preview_cache["icon"] is not None:
+            badge_text = "+ badge" if icon_badge_var.get() else "no badge"
+            preview_note_var.set(f"Hue {hue}° · {badge_text}")
+        else:
+            preview_note_var.set("Select an APK")
 
     input_var.trace_add("write", refresh_logo_preview)
     hue_var.trace_add("write", refresh_logo_preview)
+    icon_badge_var.trace_add("write", refresh_logo_preview)
     refresh_logo_preview()
 
-    side_row = ttk.Frame(frm)
-    side_row.pack(fill="x", pady=(8, 2))
-    ttk.Label(side_row, text="Side panel position", width=20).pack(side="left")
+    font_row = ttk.Frame(right_col)
+    font_row.pack(fill="x", pady=(2, 2))
+    ttk.Label(font_row, text="Font size", width=14).pack(side="left")
+    stock_font_btn = ttk.Radiobutton(
+        font_row, text="Stock", variable=font_size_var, value=FONT_SIZE_STOCK
+    )
+    stock_font_btn.pack(side="left", padx=(4, 8))
+    moderate_font_btn = ttk.Radiobutton(
+        font_row, text="Moderate", variable=font_size_var, value=FONT_SIZE_MODERATE
+    )
+    moderate_font_btn.pack(side="left", padx=(0, 8))
+    large_font_btn = ttk.Radiobutton(
+        font_row, text="Large", variable=font_size_var, value=FONT_SIZE_LARGE
+    )
+    large_font_btn.pack(side="left")
 
-    def update_panel_description():
-        if panel_var.get() == PANEL_LEFT:
-            panel_desc_var.set("Left / LHD: proven v9 compact/larger-text layout; navigation and mini-player stay on the left.")
+    side_row = ttk.Frame(right_col)
+    side_row.pack(fill="x", pady=(4, 0))
+    ttk.Label(side_row, text="Side panel", width=14).pack(side="left", anchor="n", pady=(5, 0))
+
+    side_preview_wrap = ttk.Frame(side_row)
+    side_preview_wrap.pack(side="left", fill="x", expand=True, padx=(4, 0))
+
+    PANEL_PREVIEW_W = 126
+    PANEL_PREVIEW_H = 60
+
+    def make_panel_preview(parent, side: str, title: str):
+        card = ttk.Frame(parent)
+        canvas = tk.Canvas(
+            card, width=PANEL_PREVIEW_W, height=PANEL_PREVIEW_H, highlightthickness=2,
+            background="#111111", cursor="hand2"
+        )
+        canvas.pack()
+        button = ttk.Radiobutton(card, text=title, variable=panel_var, value=side)
+        button.pack(anchor="center", pady=(2, 0))
+        return card, canvas, button
+
+    left_card, left_panel_canvas, left_panel_btn = make_panel_preview(
+        side_preview_wrap, PANEL_LEFT, "Left (LHD)"
+    )
+    left_card.pack(side="left", padx=(0, 8))
+    right_card, right_panel_canvas, right_panel_btn = make_panel_preview(
+        side_preview_wrap, PANEL_RIGHT, "Right (RHD)"
+    )
+    right_card.pack(side="left")
+
+    def draw_panel_preview(canvas, side: str, enabled: bool):
+        canvas.delete("all")
+        selected = panel_var.get() == side and enabled
+        border = "#1DB954" if selected else ("#777777" if enabled else "#444444")
+        screen = "#151515" if enabled else "#242424"
+        panel = "#303030" if enabled else "#333333"
+        ink = "#e8e8e8" if enabled else "#777777"
+        soft = "#777777" if enabled else "#555555"
+
+        w, h = PANEL_PREVIEW_W, PANEL_PREVIEW_H
+        canvas.configure(highlightbackground=border, highlightcolor=border)
+        canvas.create_rectangle(5, 5, w - 5, h - 5, fill=screen, outline="#555555")
+        panel_w = 35
+        if side == PANEL_LEFT:
+            px0, px1 = 6, 6 + panel_w
+            cx0, cx1 = px1 + 1, w - 6
         else:
-            panel_desc_var.set("Right / RHD: same v9 text/spacing plus the proven v14 navigation/player panel on the right.")
+            px0, px1 = w - 6 - panel_w, w - 6
+            cx0, cx1 = 6, px0 - 1
+        canvas.create_rectangle(px0, 6, px1, h - 6, fill=panel, outline=panel)
 
-    ttk.Radiobutton(
-        side_row, text="Left (LHD)", variable=panel_var, value=PANEL_LEFT, command=update_panel_description
-    ).pack(side="left", padx=(6, 16))
-    ttk.Radiobutton(
-        side_row, text="Right (RHD)", variable=panel_var, value=PANEL_RIGHT, command=update_panel_description
-    ).pack(side="left")
-    ttk.Label(frm, textvariable=panel_desc_var).pack(anchor="w", padx=(166, 0), pady=(0, 4))
+        # Main content: simple album/list blocks.
+        canvas.create_rectangle(cx0 + 5, 13, cx0 + 22, 30, fill=soft, outline="")
+        canvas.create_line(cx0 + 28, 16, cx1 - 5, 16, fill=ink, width=2)
+        canvas.create_line(cx0 + 28, 23, cx1 - 13, 23, fill=soft, width=1)
+        for y in (38, 45, 52):
+            canvas.create_line(cx0 + 6, y, cx1 - 6, y, fill=soft, width=1)
+        canvas.create_text((cx0 + cx1) / 2, 9, text="CONTENT", fill=ink, font=("Segoe UI", 5, "bold"))
 
-    info_row = ttk.Frame(frm)
-    info_row.pack(fill="x", pady=(8, 5))
+        # Navigation/player side panel.
+        canvas.create_text((px0 + px1) / 2, 13, text="NAV", fill=ink, font=("Segoe UI", 5, "bold"))
+        canvas.create_line(px0 + 5, 21, px1 - 5, 21, fill=soft, width=1)
+        canvas.create_line(px0 + 5, 27, px1 - 8, 27, fill=soft, width=1)
+        canvas.create_rectangle(px0 + 5, 34, px1 - 5, h - 9, outline=soft)
+        canvas.create_text((px0 + px1) / 2, (34 + h - 9) / 2, text="PLAY", fill=ink, font=("Segoe UI", 4, "bold"))
+
+    def choose_panel(side: str):
+        panel_var.set(side)
+
+    left_panel_canvas.bind("<Button-1>", lambda _e: choose_panel(PANEL_LEFT))
+    right_panel_canvas.bind("<Button-1>", lambda _e: choose_panel(PANEL_RIGHT))
+
+    ttk.Label(right_col, textvariable=panel_desc_var, wraplength=340).pack(anchor="w", padx=(108, 0), pady=(1, 1))
+
+    orientation_row = ttk.Frame(right_col)
+    orientation_row.pack(fill="x", pady=(2, 3))
+    ttk.Label(orientation_row, text="BYD screen fix", width=14).pack(side="left")
+    ttk.Checkbutton(
+        orientation_row,
+        text="Prevent portrait mode (recommended)",
+        variable=prevent_portrait_var,
+    ).pack(side="left", padx=(4, 0))
+
+    # Keep the only two main actions in the right column so they remain visible
+    # even when the activity log is shortened on a low-resolution display.
+    action_box = ttk.LabelFrame(right_col, text="Actions", padding=(8, 6))
+    action_box.pack(fill="x", pady=(5, 0))
+    info_row = ttk.Frame(action_box)
+    info_row.pack(fill="x", pady=(0, 5))
     ttk.Label(info_row, text="Pre-flight:", font=("Segoe UI", 9, "bold")).pack(side="left")
-    ttk.Label(info_row, textvariable=compat_var).pack(side="left", padx=(6, 16))
-    ttk.Label(info_row, textvariable=key_var).pack(side="left")
-    ttk.Label(info_row, textvariable=signer_var).pack(side="right")
+    ttk.Label(info_row, textvariable=compat_var).pack(side="left", padx=(6, 0))
 
-    ttk.Separator(frm).pack(fill="x", pady=8)
-    logbox = tk.Text(frm, height=log_lines, wrap="word", state="disabled", font=("Consolas", 9))
+    btnrow = ttk.Frame(action_box)
+    btnrow.pack(fill="x")
+    analyse_btn = ttk.Button(btnrow, text="ANALYSE APK")
+    analyse_btn.pack(side="left", fill="x", expand=True)
+    patch_btn = ttk.Button(btnrow, text="PATCH + SIGN", state="disabled")
+    patch_btn.pack(side="left", fill="x", expand=True, padx=(8, 0))
+
+    progress = ttk.Progressbar(action_box, mode="indeterminate")
+    progress.pack(fill="x", pady=(6, 3))
+    ttk.Label(action_box, textvariable=status_var, wraplength=340).pack(anchor="w")
+
+    def update_panel_preview(*_):
+        draw_panel_preview(left_panel_canvas, PANEL_LEFT, True)
+        draw_panel_preview(right_panel_canvas, PANEL_RIGHT, True)
+        if panel_var.get() == PANEL_LEFT:
+            panel_desc_var.set("Left / LHD: navigation and mini-player stay on the left.")
+        else:
+            panel_desc_var.set("Right / RHD: navigation and mini-player move to the right.")
+
+    panel_var.trace_add("write", update_panel_preview)
+    update_panel_preview()
+
+    ttk.Separator(frm).pack(fill="x", pady=(7, 5))
+    log_frame = ttk.LabelFrame(frm, text="Activity log", padding=(5, 4))
+    log_frame.pack(fill="both", expand=True)
+    logbox = tk.Text(log_frame, height=log_lines, wrap="word", state="disabled", font=("Consolas", 9))
     logbox.pack(fill="both", expand=True)
 
     def ui_log(s: str):
@@ -2090,26 +2661,6 @@ def run_gui() -> None:
             logbox.configure(state="disabled")
         root.after(0, append)
 
-    def refresh_key_label():
-        fp = signing_certificate_fingerprint()
-        if fp:
-            key_var.set("Signing key: " + ":".join(fp[i:i+2] for i in range(0, min(len(fp), 24), 2)) + "…")
-        else:
-            key_var.set("Signing key: will be created automatically")
-
-    refresh_key_label()
-
-    progress = ttk.Progressbar(frm, mode="indeterminate")
-    progress.pack(fill="x", pady=(10, 4))
-    ttk.Label(frm, textvariable=status_var).pack(anchor="w")
-
-    btnrow = ttk.Frame(frm)
-    btnrow.pack(fill="x", pady=(10, 0))
-
-    analyse_btn = ttk.Button(btnrow, text="ANALYSE APK")
-    analyse_btn.pack(side="left")
-    patch_btn = ttk.Button(btnrow, text="PATCH + SIGN", state="disabled")
-    patch_btn.pack(side="left", padx=(8, 0))
 
     def set_busy(busy: bool):
         if busy:
@@ -2182,27 +2733,32 @@ def run_gui() -> None:
         ui_log(f"Output: {dst}")
         ui_log(f"Instance: {get_instance_config(selected_instance)['title']} ({package_var.get()})")
         ui_log(f"Visible name: {selected_label}")
-        ui_log(f"Icon hue: {selected_hue}°")
-        ui_log("Panel:  " + ("Left / LHD" if panel_var.get() == PANEL_LEFT else "Right / RHD"))
+        ui_log(f"Icon: {'+ badge' if icon_badge_var.get() else 'no badge'}, hue {selected_hue}°")
+        ui_log(f"UI layout: BYD optimised / font: {font_size_var.get()} / panel: {panel_var.get()}")
+        ui_log(f"Prevent portrait: {'yes' if prevent_portrait_var.get() else 'no'}")
 
         def worker():
             try:
                 report = patch_and_sign(
                     src, dst, panel_var.get(), ui_log,
                     instance=selected_instance, app_label=selected_label, icon_hue=selected_hue,
+                    icon_badge=bool(icon_badge_var.get()),
+                    font_size=font_size_var.get(), prevent_portrait=bool(prevent_portrait_var.get()),
                 )
                 for w in report.warnings:
                     ui_log("WARNING: " + w)
                 ui_log(f"Manifest strings patched: {len(report.manifest_changes)}")
                 ui_log(f"DEX entries patched: {report.dex_changes}")
                 ui_log(f"UI resource values patched: {report.ui_changes}")
+                ui_log(f"Font size: {report.font_size}")
                 ui_log(f"Panel side: {report.panel_side}")
                 ui_log(f"Package: {report.package_name}")
                 ui_log(f"Visible name: {report.app_label}")
-                ui_log(f"Icon hue: {report.icon_hue}°")
+                ui_log(f"Icon: {'+ badge' if report.icon_badge else 'no badge'}, hue {report.icon_hue}°")
+                if report.prevent_portrait:
+                    ui_log(f"Portrait locks removed: manifest={len(report.orientation_manifest_changes)}, runtime={report.orientation_dex_changes}")
                 ui_log(f"Runtime service files preserved: {report.services_preserved}")
                 ui_log(f"Final SHA-256: {report.output_sha256}")
-                root.after(0, refresh_key_label)
                 root.after(0, lambda: status_var.set("Ready — patched APK is signed and verified."))
                 root.after(0, lambda: messagebox.showinfo("Done", f"Ready to install:\n{dst}"))
             except Exception as e:
@@ -2216,110 +2772,9 @@ def run_gui() -> None:
 
     patch_btn.configure(command=do_patch)
 
-    def open_folder():
-        p = Path(output_var.get().strip()).parent
-        if os.name == "nt" and p.exists():
-            os.startfile(str(p))  # type: ignore[attr-defined]
-        elif p.exists():
-            subprocess.Popen(["xdg-open", str(p)])
-
-    ttk.Button(btnrow, text="Open output folder", command=open_folder).pack(side="left", padx=8)
-
-    def export_diag():
-        a = last_analysis["value"]
-        if not a:
-            messagebox.showerror("Analyse first", "Run ANALYSE APK before exporting diagnostics.")
-            return
-        default = Path(a.input_path).stem + "_BYD_diagnostics.json"
-        dest = filedialog.asksaveasfilename(
-            defaultextension=".json", initialfile=default, filetypes=[("JSON diagnostics", "*.json")]
-        )
-        if not dest:
-            return
-        try:
-            export_diagnostics(a, dest)
-            messagebox.showinfo("Diagnostics saved", "Support-safe diagnostics saved. The file contains hashes and APK structure, not Spotify code.")
-        except Exception as e:
-            messagebox.showerror("Export failed", str(e))
-
-    ttk.Button(btnrow, text="Export diagnostics…", command=export_diag).pack(side="left", padx=4)
-
-    keyrow = ttk.Frame(frm)
-    keyrow.pack(fill="x", pady=(8, 0))
-    ttk.Label(keyrow, text="Update signing key:", font=("Segoe UI", 9, "bold")).pack(side="left")
-
-    def prepare_key():
-        try:
-            ensure_signing_identity(ui_log)
-            refresh_key_label()
-            messagebox.showinfo("Signing key ready", "A private signing identity is ready. The same key will be reused automatically for future Spotify BYD updates.")
-        except Exception as e:
-            messagebox.showerror("Key creation failed", str(e))
-
-    ttk.Button(keyrow, text="Create / show key", command=prepare_key).pack(side="left", padx=(8, 4))
-
-    def import_existing_keystore_gui():
-        src = filedialog.askopenfilename(
-            title="Import existing Android signing keystore",
-            filetypes=[("Android keystore", "*.jks *.p12 *.pfx"), ("All files", "*.*")],
-        )
-        if not src:
-            return
-        password = simpledialog.askstring("Keystore password", "Password for the existing keystore:", show="*")
-        if password is None:
-            return
-        alias = simpledialog.askstring("Key alias", "Key alias (your earlier manual key used spotifyplus):", initialvalue="spotifyplus")
-        if not alias:
-            return
-        try:
-            fp = import_external_signing_keystore(src, password, alias)
-            refresh_key_label()
-            messagebox.showinfo(
-                "Existing key imported",
-                "The patcher will now sign with your existing Android key, so future APKs can update an installation signed by that key.\n\nCertificate SHA-256:\n" + fp,
-            )
-        except Exception as e:
-            messagebox.showerror("Import failed", str(e))
-
-    ttk.Button(keyrow, text="Import existing JKS/P12…", command=import_existing_keystore_gui).pack(side="left", padx=4)
-
-    def export_key():
-        try:
-            default = "BYDSpotifyPatcher-signing-key-backup.zip"
-            dest = filedialog.asksaveasfilename(
-                defaultextension=".zip", initialfile=default, filetypes=[("ZIP backup", "*.zip")]
-            )
-            if not dest:
-                return
-            export_signing_identity(dest)
-            refresh_key_label()
-            messagebox.showinfo(
-                "Key exported",
-                "Signing-key backup saved. Keep it private; it is needed to keep updating the same Spotify BYD installation from another PC.",
-            )
-        except Exception as e:
-            messagebox.showerror("Export failed", str(e))
-
-    def import_key():
-        src = filedialog.askopenfilename(filetypes=[("ZIP backup", "*.zip"), ("All files", "*.*")])
-        if not src:
-            return
-        if not messagebox.askyesno(
-            "Replace signing key?",
-            "Importing a different key changes which existing Spotify BYD installation this PC can update. "
-            "The current key will be backed up automatically. Continue?",
-        ):
-            return
-        try:
-            fp = import_signing_identity(src)
-            refresh_key_label()
-            messagebox.showinfo("Key imported", "Signing key restored. Certificate SHA-256:\n" + fp)
-        except Exception as e:
-            messagebox.showerror("Import failed", str(e))
-
-    ttk.Button(keyrow, text="Export backup…", command=export_key).pack(side="left", padx=4)
-    ttk.Button(keyrow, text="Import backup…", command=import_key).pack(side="left", padx=4)
-    ttk.Button(keyrow, text="Exit", command=root.destroy).pack(side="right")
+    # Keep the normal GUI focused on the two operations users actually need.
+    # Diagnostics and signing-key import/export remain available through the CLI
+    # and underlying helper functions for troubleshooting/development.
 
     def size_and_center_window():
         """Fit the GUI inside the usable desktop and center it before showing."""
@@ -2334,14 +2789,14 @@ def run_gui() -> None:
         max_w = max(760, work_w - margin * 2)
         max_h = max(600, work_h - margin * 2)
 
-        target_w = min(max(requested_w, 920), max_w)
-        target_h = min(max(requested_h, 700), max_h)
+        target_w = min(max(requested_w, 900), max_w)
+        target_h = min(max(requested_h, 600), max_h)
 
         x = work_x + max(0, (work_w - target_w) // 2)
         y = work_y + max(0, (work_h - target_h) // 2)
 
         root.geometry(f"{target_w}x{target_h}+{x}+{y}")
-        root.minsize(min(820, target_w), min(600, target_h))
+        root.minsize(min(840, target_w), min(560, target_h))
 
     size_and_center_window()
     root.deiconify()
@@ -2355,7 +2810,15 @@ def cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--unsigned", action="store_true", help="patch/alignment only; do not sign")
     parser.add_argument(
         "--panel-side", choices=[PANEL_LEFT, PANEL_RIGHT], default=PANEL_LEFT,
-        help="wide-screen navigation/player side: left=v9/LHD, right=v14/RHD (default: left)",
+        help="BYD navigation/player side: left=LHD, right=RHD (default: left)",
+    )
+    parser.add_argument(
+        "--font-size", choices=[FONT_SIZE_STOCK, FONT_SIZE_MODERATE, FONT_SIZE_LARGE], default=None,
+        help="Spotify font size: stock, moderate, or large (default: moderate)",
+    )
+    parser.add_argument(
+        "--ui-size", choices=["standard", "large"], dest="legacy_ui_size", default=None,
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--instance", choices=[INSTANCE_PRIMARY, INSTANCE_SECONDARY], default=INSTANCE_PRIMARY,
@@ -2363,6 +2826,14 @@ def cli(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--app-label", help=f"visible launcher name (max {MAX_APP_LABEL_LEN} characters)")
     parser.add_argument("--icon-hue", type=int, help="launcher icon hue rotation in degrees (0-359)")
+    parser.add_argument(
+        "--no-icon-badge", dest="icon_badge", action="store_false", default=True,
+        help="keep the launcher icon without the patcher's + badge",
+    )
+    parser.add_argument(
+        "--allow-portrait", action="store_true",
+        help="do not remove Spotify's portrait locks (BYD portrait prevention is on by default)",
+    )
     parser.add_argument("--analyse", action="store_true", help="analyse compatibility only")
     parser.add_argument("--diagnostics", metavar="JSON", help="analyse and export support-safe diagnostics JSON")
     parser.add_argument("--gui", action="store_true", help="open GUI")
@@ -2394,6 +2865,9 @@ def cli(argv: list[str] | None = None) -> int:
         target_package = cfg["package"]
         app_label = validate_app_label(args.app_label if args.app_label is not None else cfg["label"])
         icon_hue = normalise_hue(args.icon_hue if args.icon_hue is not None else cfg["hue"])
+        font_size = args.font_size or FONT_SIZE_MODERATE
+        if args.legacy_ui_size:
+            font_size = FONT_SIZE_LARGE if args.legacy_ui_size == "large" else FONT_SIZE_MODERATE
         if args.diagnostics:
             a = analyse_apk(args.input, target_package=target_package)
             export_diagnostics(a, args.diagnostics)
@@ -2410,11 +2884,15 @@ def cli(argv: list[str] | None = None) -> int:
             r = patch_apk(
                 args.input, output, args.panel_side, print,
                 instance=args.instance, app_label=app_label, icon_hue=icon_hue,
+                icon_badge=args.icon_badge, font_size=font_size,
+                prevent_portrait=not args.allow_portrait,
             )
         else:
             r = patch_and_sign(
                 args.input, output, args.panel_side, print,
                 instance=args.instance, app_label=app_label, icon_hue=icon_hue,
+                icon_badge=args.icon_badge, font_size=font_size,
+                prevent_portrait=not args.allow_portrait,
             )
         for w in r.warnings:
             print("WARNING:", w)

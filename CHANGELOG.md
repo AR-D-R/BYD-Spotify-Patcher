@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.6
+
+- Added a BYD portrait-orientation fix for Spotify 8.9.76.538: removes the 12 known manifest portrait locks and 3 known runtime portrait requests, covering Queue and fullscreen Lyrics.
+- The proven BYD wide-screen visual/layout profile is now always applied; the separate Stock-layout option was removed from the public GUI and CLI.
+- Added independent **Font size** choices: **Stock**, **Moderate**, and **Large**. Stock keeps original Spotify text sizes, Moderate uses the established BYD text enlargement, and Large adds a further targeted increase.
+- Added visual **Left (LHD)** and **Right (RHD)** panel previews.
+- Added an option to keep the stock-style launcher icon without the `+` badge while retaining independent hue adjustment and live preview.
+- Simplified the GUI to the two main actions: **ANALYSE APK** and **PATCH + SIGN**.
+- Reworked the GUI into a compact two-column layout so the controls fit better on lower-resolution Windows displays.
+- Primary `com.spotify.musib` and Secondary `com.spotify.musia` remain the only supported clone identities.
+- Existing BYD AutoResume/restore behaviour is unchanged.
+- Public version numbering intentionally moves directly from **v0.5.3** to **v0.6**.
+
 ## v0.5.3
 
 - Removed the experimental third `com.spotify.musid` profile after BYD head-unit testing confirmed it crashes on launch.
