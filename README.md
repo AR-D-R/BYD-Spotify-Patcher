@@ -114,7 +114,7 @@ At the top of the Manager select either:
 
 The settings shown below will change depending on the selected Spotify version.
 
-<!-- IMAGE PLACEHOLDER: docs/images/02-select-profile.jpg -->
+![SpotifyPlus app list](docs/images/02-select-profile.jpg)
 
 ---
 
@@ -183,9 +183,9 @@ The default names are:
 - Primary: **SpotifyPlus**
 - Secondary: **SpotifyPlus2**
 
-<!-- IMAGE PLACEHOLDER: docs/images/08-app-list.jpg -->
+![SpotifyPlus app list](docs/images/08-app-list.jpg)
 
-<!-- IMAGE PLACEHOLDER: docs/images/08-app-list2.jpg -->
+![SpotifyPlus app list](docs/images/08-app-list2.jpg)
 
 ---
 
