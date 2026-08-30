@@ -1,0 +1,121 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/surface" android:fillViewport="true">
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
+
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="BYD Spotify Manager" android:textColor="@color/text_primary" android:textSize="24sp" android:textStyle="bold" />
+            <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+            <TextView android:id="@+id/txtManagerVersion" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="v1.0" android:textColor="@color/text_secondary" android:textSize="12sp" />
+        </LinearLayout>
+
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:gravity="center_vertical" android:orientation="horizontal">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="6dp" android:text="SPOTIFY VERSION" android:textColor="@color/text_secondary" android:textSize="11sp" android:textStyle="bold" />
+            <RadioGroup android:id="@+id/groupEngine" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal">
+                <RadioButton android:id="@+id/radioEngine91" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:text="Spotify 9.1" android:textColor="@color/text_primary" />
+                <RadioButton android:id="@+id/radioEngine89" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="12dp" android:text="Spotify 8.9" android:textColor="@color/text_primary" />
+            </RadioGroup>
+        </LinearLayout>
+
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/card_bg" android:orientation="vertical" android:padding="12dp">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="SPOTIFY SLOTS" android:textColor="@color/text_secondary" android:textStyle="bold" />
+                <TextView android:id="@+id/txtSlotsVersion" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="9.1" android:textColor="@color/brand" android:textStyle="bold" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/slotOfficialCard" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:background="@drawable/slot_bg" android:orientation="vertical" android:padding="9dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="OFFICIAL / OEM" android:textColor="@color/text_primary" android:textStyle="bold" />
+                <TextView android:id="@+id/txtOfficial" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_secondary" android:textSize="12sp" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/slotPrimaryCard" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:background="@drawable/slot_bg" android:clickable="true" android:focusable="true" android:orientation="horizontal" android:padding="9dp" android:gravity="center_vertical">
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical"><RadioButton android:id="@+id/radioPrimary" android:layout_width="match_parent" android:layout_height="wrap_content" android:checked="true" android:text="PRIMARY SLOT" android:textColor="@color/text_primary" android:textStyle="bold" />
+                <TextView android:id="@+id/txtPrimary" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_secondary" android:textSize="12sp" />
+                </LinearLayout><Button android:id="@+id/btnPrimaryInfo" android:layout_width="104dp" android:layout_height="42dp" android:minHeight="0dp" android:text="APP INFO" android:textSize="10sp" android:layout_marginStart="8dp" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/slotSecondaryCard" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:background="@drawable/slot_bg" android:clickable="true" android:focusable="true" android:orientation="horizontal" android:padding="9dp" android:gravity="center_vertical">
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical"><RadioButton android:id="@+id/radioSecondary" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="SECONDARY SLOT" android:textColor="@color/text_primary" android:textStyle="bold" />
+                <TextView android:id="@+id/txtSecondary" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_secondary" android:textSize="12sp" />
+                </LinearLayout><Button android:id="@+id/btnSecondaryInfo" android:layout_width="104dp" android:layout_height="42dp" android:minHeight="0dp" android:text="APP INFO" android:textSize="10sp" android:layout_marginStart="8dp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/card_bg" android:orientation="vertical" android:padding="12dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="SOURCE APK" android:textColor="@color/text_secondary" android:textStyle="bold" />
+            <TextView android:id="@+id/txtSourceVersion" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="Spotify 9.1.78.2215" android:textColor="@color/text_primary" />
+            <TextView android:id="@+id/txtSourceStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:maxLines="3" android:text="No source selected" android:textColor="@color/text_secondary" android:textSize="12sp" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:orientation="horizontal">
+                <Button android:id="@+id/btnApkMirror" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="APKMirror" />
+                <Button android:id="@+id/btnBrowse" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:layout_weight="1" android:text="Browse APK" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <Button android:id="@+id/btnDiagnostics" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Diagnostics" />
+                <Button android:id="@+id/btnRefresh" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:layout_weight="1" android:text="Refresh" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/card_bg" android:orientation="vertical" android:padding="12dp">
+            <TextView android:id="@+id/txtSelectedSlotTitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="PRIMARY SETTINGS · SPOTIFY 9.1" android:textColor="@color/text_primary" android:textSize="20sp" android:textStyle="bold" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="APP IDENTITY" android:textColor="@color/text_secondary" android:textStyle="bold" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="App name" android:textColor="@color/text_secondary" />
+            <EditText android:id="@+id/editAppName" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="SpotifyPlus" android:maxLength="32" android:singleLine="true" android:textColor="@color/text_primary" android:textColorHint="@color/text_secondary" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:gravity="center_vertical" android:orientation="horizontal">
+                <ImageView android:id="@+id/imgIconPreview" android:layout_width="64dp" android:layout_height="64dp" android:contentDescription="Launcher icon preview" />
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:layout_weight="1" android:orientation="vertical">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Hue" android:textColor="@color/text_secondary" />
+                        <SeekBar android:id="@+id/seekIconHue" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="7dp" android:layout_weight="1" android:max="359" />
+                        <TextView android:id="@+id/txtIconHue" android:layout_width="46dp" android:layout_height="wrap_content" android:gravity="end" android:text="0°" android:textColor="@color/text_primary" />
+                    </LinearLayout>
+                    <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchIconBadge" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Add + badge" android:textColor="@color/text_primary" />
+                </LinearLayout>
+            </LinearLayout>
+            <TextView android:id="@+id/txtBrandingHint" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="0° keeps original Spotify colours." android:textColor="@color/text_secondary" android:textSize="11sp" />
+
+            <LinearLayout android:id="@+id/panel91" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="SPOTIFY 9.1 DISPLAY" android:textColor="@color/text_secondary" android:textStyle="bold" />
+                <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchBydLayout" android:layout_width="match_parent" android:layout_height="wrap_content" android:checked="true" android:text="BYD wide-screen layout fixes" android:textColor="@color/text_primary" />
+                <RadioGroup android:id="@+id/groupScale" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                    <RadioButton android:id="@+id/radioScale100" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="100%" android:textColor="@color/text_primary" />
+                    <RadioButton android:id="@+id/radioScale120" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:text="120%" android:textColor="@color/text_primary" android:checked="true" />
+                    <RadioButton android:id="@+id/radioScale140" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:text="140%" android:textColor="@color/text_primary" />
+                    <RadioButton android:id="@+id/radioScale160" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:text="160%" android:textColor="@color/text_primary" />
+                </RadioGroup>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Player position" android:textColor="@color/text_secondary" />
+                    <RadioGroup android:id="@+id/groupPlayerPosition" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:orientation="horizontal">
+                        <RadioButton android:id="@+id/radioPlayerLhs" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="LHS" android:textColor="@color/text_primary" />
+                        <RadioButton android:id="@+id/radioPlayerRhs" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:checked="true" android:text="RHS" android:textColor="@color/text_primary" />
+                    </RadioGroup>
+                </LinearLayout>
+                <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchOptimise" android:layout_width="match_parent" android:layout_height="wrap_content" android:checked="true" android:text="Optimise startup performance" android:textColor="@color/text_primary" />
+                <TextView android:id="@+id/txtOptimiseHint" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Installs matched DexMetadata for faster startup." android:textColor="@color/text_secondary" android:textSize="11sp" />
+                <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchAutoResume" android:layout_width="match_parent" android:layout_height="wrap_content" android:checked="true" android:text="Resume playback after vehicle restart" android:textColor="@color/text_primary" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/panel89" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="SPOTIFY 8.9 · BYD DISPLAY" android:textColor="@color/text_secondary" android:textStyle="bold" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:text="Font size" android:textColor="@color/text_secondary" />
+                <RadioGroup android:id="@+id/group89Font" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                    <RadioButton android:id="@+id/radio89FontStock" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Stock" android:textColor="@color/text_primary" />
+                    <RadioButton android:id="@+id/radio89FontModerate" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:checked="true" android:text="Moderate" android:textColor="@color/text_primary" />
+                    <RadioButton android:id="@+id/radio89FontLarge" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="Large" android:textColor="@color/text_primary" />
+                </RadioGroup>
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Side panel" android:textColor="@color/text_secondary" />
+                <RadioGroup android:id="@+id/group89Panel" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                    <RadioButton android:id="@+id/radio89PanelLeft" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Left (LHD)" android:textColor="@color/text_primary" />
+                    <RadioButton android:id="@+id/radio89PanelRight" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:checked="true" android:text="Right (RHD)" android:textColor="@color/text_primary" />
+                </RadioGroup>
+                <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switch89PreventPortrait" android:layout_width="match_parent" android:layout_height="wrap_content" android:checked="true" android:text="Keep Spotify in landscape" android:textColor="@color/text_primary" />
+                </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/progress_bg" android:orientation="vertical" android:padding="10dp">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+                <TextView android:id="@+id/txtProgressStage" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="READY" android:textColor="@color/brand" android:textStyle="bold" />
+                <TextView android:id="@+id/txtProgressPercent" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0%" android:textColor="@color/text_primary" android:textStyle="bold" />
+            </LinearLayout>
+            <ProgressBar android:id="@+id/progressBar" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="8dp" android:layout_marginTop="5dp" android:max="100" android:progressBackgroundTint="@color/divider" android:progressTint="@color/brand" />
+            <TextView android:id="@+id/txtProgress" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:text="Ready to patch." android:textColor="@color/text_primary" android:textSize="12sp" />
+        </LinearLayout>
+        <Button android:id="@+id/btnPatchInstall" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="7dp" android:backgroundTint="@color/brand" android:text="PATCH &amp; INSTALL" android:textColor="#000000" android:textStyle="bold" />
+    </LinearLayout>
+</ScrollView>

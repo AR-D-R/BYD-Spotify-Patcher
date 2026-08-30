@@ -1,0 +1,753 @@
+[
+  {
+    "name": "AndroidManifest.xml",
+    "op": "patch",
+    "asset": "90f0a3019e1c91cfede9.zst",
+    "targetSize": 141096,
+    "method": 8
+  },
+  {
+    "name": "assets/dexopt/baseline.prof",
+    "op": "patch",
+    "asset": "f953f190a00484137f90.zst",
+    "targetSize": 107655,
+    "method": 0
+  },
+  {
+    "name": "classes.dex",
+    "op": "patch",
+    "asset": "a4eb65ee003b654fc1fc.zst",
+    "targetSize": 9512776,
+    "method": 8
+  },
+  {
+    "name": "classes2.dex",
+    "op": "patch",
+    "asset": "544650904fdfe0061abf.zst",
+    "targetSize": 10149668,
+    "method": 8
+  },
+  {
+    "name": "classes3.dex",
+    "op": "patch",
+    "asset": "0b46093464b0713c9be3.zst",
+    "targetSize": 7573320,
+    "method": 8
+  },
+  {
+    "name": "classes6.dex",
+    "op": "patch",
+    "asset": "4c623919768e81755de3.zst",
+    "targetSize": 8453696,
+    "method": 8
+  },
+  {
+    "name": "classes7.dex",
+    "op": "patch",
+    "asset": "d3ef2465519fa011d442.zst",
+    "targetSize": 8913112,
+    "method": 8
+  },
+  {
+    "name": "classes8.dex",
+    "op": "patch",
+    "asset": "1f13ccceb486d7e398d7.zst",
+    "targetSize": 8094780,
+    "method": 8
+  },
+  {
+    "name": "classes9.dex",
+    "op": "patch",
+    "asset": "f5c9c7ab77e71c109b85.zst",
+    "targetSize": 8804620,
+    "method": 8
+  },
+  {
+    "name": "res/drawable/encore_icon_devices_16.xml",
+    "op": "patch",
+    "asset": "89af9a1368a1098d656a.zst",
+    "targetSize": 1032,
+    "method": 8
+  },
+  {
+    "name": "res/drawable/encore_icon_devices_24.xml",
+    "op": "patch",
+    "asset": "f099f5d76eee907ae649.zst",
+    "targetSize": 1032,
+    "method": 8
+  },
+  {
+    "name": "res/drawable/library_placeholder_subtitle.xml",
+    "op": "patch",
+    "asset": "d8d35b8810f21399ae56.zst",
+    "targetSize": 448,
+    "method": 8
+  },
+  {
+    "name": "res/drawable/loading_episode_row_title.xml",
+    "op": "patch",
+    "asset": "b5479b0f4f9916555565.zst",
+    "targetSize": 448,
+    "method": 8
+  },
+  {
+    "name": "res/drawable/loading_track_row_title.xml",
+    "op": "patch",
+    "asset": "6445f9c8b0a8cc7e441c.zst",
+    "targetSize": 448,
+    "method": 8
+  },
+  {
+    "name": "res/drawable/release_row_loading_row_title.xml",
+    "op": "patch",
+    "asset": "53bc013f98883a56cab6.zst",
+    "targetSize": 448,
+    "method": 8
+  },
+  {
+    "name": "res/drawable/track_header_lock_icon_drawable.xml",
+    "op": "patch",
+    "asset": "47c62624262645c4c179.zst",
+    "targetSize": 796,
+    "method": 8
+  },
+  {
+    "name": "res/layout/actions_medium_card_default_bar.xml",
+    "op": "patch",
+    "asset": "8d6c0285f376991e2532.zst",
+    "targetSize": 3276,
+    "method": 8
+  },
+  {
+    "name": "res/layout/actions_medium_card_episode_bar.xml",
+    "op": "patch",
+    "asset": "6a5e10c7a161fbfbdd0e.zst",
+    "targetSize": 3596,
+    "method": 8
+  },
+  {
+    "name": "res/layout/actions_medium_card_text_container_album.xml",
+    "op": "patch",
+    "asset": "96d815675230b4cdd594.zst",
+    "targetSize": 1748,
+    "method": 8
+  },
+  {
+    "name": "res/layout/actions_medium_card_text_container_episode.xml",
+    "op": "patch",
+    "asset": "5be59f9fb11642a90918.zst",
+    "targetSize": 2152,
+    "method": 8
+  },
+  {
+    "name": "res/layout/activity_change_pronouns.xml",
+    "op": "patch",
+    "asset": "39e9b727f7ab6f4babbb.zst",
+    "targetSize": 3240,
+    "method": 8
+  },
+  {
+    "name": "res/layout/activity_onboarding.xml",
+    "op": "patch",
+    "asset": "5f4c5058a67da5a89a6a.zst",
+    "targetSize": 3280,
+    "method": 8
+  },
+  {
+    "name": "res/layout/activity_scannable.xml",
+    "op": "patch",
+    "asset": "7bbb8e5ef6030b23d272.zst",
+    "targetSize": 2028,
+    "method": 8
+  },
+  {
+    "name": "res/layout/com_facebook_device_auth_dialog_fragment.xml",
+    "op": "patch",
+    "asset": "1755560cc743ede1f8b0.zst",
+    "targetSize": 3384,
+    "method": 8
+  },
+  {
+    "name": "res/layout/com_facebook_smart_device_dialog_fragment.xml",
+    "op": "patch",
+    "asset": "a2e9317d03efcf17852a.zst",
+    "targetSize": 3704,
+    "method": 8
+  },
+  {
+    "name": "res/layout/concert_entity_header_content.xml",
+    "op": "patch",
+    "asset": "ee734e4011454621def1.zst",
+    "targetSize": 7816,
+    "method": 8
+  },
+  {
+    "name": "res/layout/culturalmoments_actions_medium_card_default_bar.xml",
+    "op": "patch",
+    "asset": "a1186a6d83d6acb49afd.zst",
+    "targetSize": 3276,
+    "method": 8
+  },
+  {
+    "name": "res/layout/culturalmoments_actions_medium_card_text_container_playlist.xml",
+    "op": "patch",
+    "asset": "a181e8135a78a807385f.zst",
+    "targetSize": 2192,
+    "method": 8
+  },
+  {
+    "name": "res/layout/default_episode_row_loading_layout.xml",
+    "op": "patch",
+    "asset": "303839e5ef093a17ac33.zst",
+    "targetSize": 3116,
+    "method": 8
+  },
+  {
+    "name": "res/layout/default_search_header_show.xml",
+    "op": "patch",
+    "asset": "4729e8b4f0690d37139d.zst",
+    "targetSize": 1776,
+    "method": 8
+  },
+  {
+    "name": "res/layout/default_show_out_of_region_error.xml",
+    "op": "patch",
+    "asset": "2d4d97bf2c6c59153067.zst",
+    "targetSize": 1968,
+    "method": 8
+  },
+  {
+    "name": "res/layout/description_element.xml",
+    "op": "patch",
+    "asset": "07054841d4baaba4700f.zst",
+    "targetSize": 1236,
+    "method": 8
+  },
+  {
+    "name": "res/layout/effortless_login_dialog.xml",
+    "op": "patch",
+    "asset": "c1d7b44d98bd619dfe4b.zst",
+    "targetSize": 3400,
+    "method": 8
+  },
+  {
+    "name": "res/layout/equalizer_seek_bar_layout.xml",
+    "op": "patch",
+    "asset": "df1b59345f43df38e077.zst",
+    "targetSize": 2236,
+    "method": 8
+  },
+  {
+    "name": "res/layout/event_row_layout.xml",
+    "op": "patch",
+    "asset": "9fc83234f1e72bb6149d.zst",
+    "targetSize": 3336,
+    "method": 8
+  },
+  {
+    "name": "res/layout/fan_stamp_card_scene.xml",
+    "op": "patch",
+    "asset": "f885f679887468bbba36.zst",
+    "targetSize": 6872,
+    "method": 8
+  },
+  {
+    "name": "res/layout/fragment_graduation_start.xml",
+    "op": "patch",
+    "asset": "80185c264a48a2094b7e.zst",
+    "targetSize": 1572,
+    "method": 8
+  },
+  {
+    "name": "res/layout/fragment_kid_account_creation_education.xml",
+    "op": "patch",
+    "asset": "550055bc14acac6ff15c.zst",
+    "targetSize": 7824,
+    "method": 8
+  },
+  {
+    "name": "res/layout/fragment_kid_account_creation_name.xml",
+    "op": "patch",
+    "asset": "b775e2e706f0ff73836d.zst",
+    "targetSize": 5264,
+    "method": 8
+  },
+  {
+    "name": "res/layout/fragment_language_minimum_selection_dialog.xml",
+    "op": "patch",
+    "asset": "0b0e2b0f08d9a39e6cd6.zst",
+    "targetSize": 1892,
+    "method": 8
+  },
+  {
+    "name": "res/layout/fragment_member_details_update_name.xml",
+    "op": "patch",
+    "asset": "7e38c87b7e0d6a3da9fc.zst",
+    "targetSize": 3752,
+    "method": 8
+  },
+  {
+    "name": "res/layout/fragment_webview.xml",
+    "op": "patch",
+    "asset": "5cc81d19b0291987d98f.zst",
+    "targetSize": 3012,
+    "method": 8
+  },
+  {
+    "name": "res/layout/gated_content_engagement_dialog_layout.xml",
+    "op": "patch",
+    "asset": "572c2f0f6c1563368589.zst",
+    "targetSize": 3780,
+    "method": 8
+  },
+  {
+    "name": "res/layout/glue_listtile_2.xml",
+    "op": "patch",
+    "asset": "c2a5f895b2d7293d2f23.zst",
+    "targetSize": 1944,
+    "method": 8
+  },
+  {
+    "name": "res/layout/glue_listtile_2_image.xml",
+    "op": "patch",
+    "asset": "eb7bea10aa8db3db3c95.zst",
+    "targetSize": 2176,
+    "method": 8
+  },
+  {
+    "name": "res/layout/glue_listtile_2_image_muted.xml",
+    "op": "patch",
+    "asset": "9f91ccbc8ea49c77dd9c.zst",
+    "targetSize": 2132,
+    "method": 8
+  },
+  {
+    "name": "res/layout/glue_listtile_2_landscape_image.xml",
+    "op": "patch",
+    "asset": "e5abb49fad9a7afccd2c.zst",
+    "targetSize": 2824,
+    "method": 8
+  },
+  {
+    "name": "res/layout/glue_listtile_2_muted.xml",
+    "op": "patch",
+    "asset": "0185782311f6f58084a4.zst",
+    "targetSize": 1900,
+    "method": 8
+  },
+  {
+    "name": "res/layout/glue_listtile_2_number.xml",
+    "op": "patch",
+    "asset": "369694e310272d2fd46d.zst",
+    "targetSize": 2244,
+    "method": 8
+  },
+  {
+    "name": "res/layout/glue_listtile_2_number_muted.xml",
+    "op": "patch",
+    "asset": "dc5ac791fb4407416c71.zst",
+    "targetSize": 2200,
+    "method": 8
+  },
+  {
+    "name": "res/layout/greenroom_track_info_row.xml",
+    "op": "patch",
+    "asset": "a43b1cc9c380d4d98741.zst",
+    "targetSize": 1512,
+    "method": 8
+  },
+  {
+    "name": "res/layout/integration_validator_dialog_row_item.xml",
+    "op": "patch",
+    "asset": "e483de2914735410c11c.zst",
+    "targetSize": 1648,
+    "method": 8
+  },
+  {
+    "name": "res/layout/library_placeholder_card_circular_layout.xml",
+    "op": "patch",
+    "asset": "4d1860d22913a0a17f80.zst",
+    "targetSize": 2280,
+    "method": 8
+  },
+  {
+    "name": "res/layout/library_placeholder_card_layout.xml",
+    "op": "patch",
+    "asset": "d3f70a20a7a664f86173.zst",
+    "targetSize": 2280,
+    "method": 8
+  },
+  {
+    "name": "res/layout/library_placeholder_row_circular_layout.xml",
+    "op": "patch",
+    "asset": "10f613946596156e1bc9.zst",
+    "targetSize": 1712,
+    "method": 8
+  },
+  {
+    "name": "res/layout/library_placeholder_row_layout.xml",
+    "op": "patch",
+    "asset": "614a48b1b94c1bc14095.zst",
+    "targetSize": 2200,
+    "method": 8
+  },
+  {
+    "name": "res/layout/listening_hours_card.xml",
+    "op": "patch",
+    "asset": "d61cd6564a8baf82e471.zst",
+    "targetSize": 5844,
+    "method": 8
+  },
+  {
+    "name": "res/layout/live_event_badge_layout.xml",
+    "op": "patch",
+    "asset": "a81080bd5043fe74e420.zst",
+    "targetSize": 1544,
+    "method": 8
+  },
+  {
+    "name": "res/layout/livestreamcontrol_row_upcoming_layout.xml",
+    "op": "patch",
+    "asset": "841433fe4923bc34fac4.zst",
+    "targetSize": 2616,
+    "method": 8
+  },
+  {
+    "name": "res/layout/loading_episode_row_layout.xml",
+    "op": "patch",
+    "asset": "5c3ae9c2b92522830fca.zst",
+    "targetSize": 3016,
+    "method": 8
+  },
+  {
+    "name": "res/layout/loading_track_row_layout.xml",
+    "op": "patch",
+    "asset": "e765b83b05cc40d34a32.zst",
+    "targetSize": 2048,
+    "method": 8
+  },
+  {
+    "name": "res/layout/marquee_overlay_view.xml",
+    "op": "patch",
+    "asset": "944ee567f4feced9ef6f.zst",
+    "targetSize": 4796,
+    "method": 8
+  },
+  {
+    "name": "res/layout/marquee_overlay_view_tablet.xml",
+    "op": "patch",
+    "asset": "ee5340e2eb23258a158e.zst",
+    "targetSize": 4776,
+    "method": 8
+  },
+  {
+    "name": "res/layout/message_system_bubble_view_holder.xml",
+    "op": "patch",
+    "asset": "6c8cbf0252d6d535978e.zst",
+    "targetSize": 1292,
+    "method": 8
+  },
+  {
+    "name": "res/layout/message_system_text_view_holder.xml",
+    "op": "patch",
+    "asset": "ca1465e5476e89a7d4fa.zst",
+    "targetSize": 1304,
+    "method": 8
+  },
+  {
+    "name": "res/layout/pageloader_debug_error.xml",
+    "op": "patch",
+    "asset": "2804be735239feb7ac45.zst",
+    "targetSize": 1348,
+    "method": 8
+  },
+  {
+    "name": "res/layout/plan_details_card_header.xml",
+    "op": "patch",
+    "asset": "abd27b99d4b3fbe4837f.zst",
+    "targetSize": 2648,
+    "method": 8
+  },
+  {
+    "name": "res/layout/playlist_all_songs_header_content.xml",
+    "op": "patch",
+    "asset": "546e504d33bdcea09d05.zst",
+    "targetSize": 1984,
+    "method": 8
+  },
+  {
+    "name": "res/layout/premium_page_visual_header_content_layout.xml",
+    "op": "patch",
+    "asset": "538e035de44c434d82c7.zst",
+    "targetSize": 4232,
+    "method": 8
+  },
+  {
+    "name": "res/layout/profile_completion_result_view.xml",
+    "op": "patch",
+    "asset": "890c27e599364063af65.zst",
+    "targetSize": 2792,
+    "method": 8
+  },
+  {
+    "name": "res/layout/profile_header_layout.xml",
+    "op": "patch",
+    "asset": "ad64a48fda03547be30b.zst",
+    "targetSize": 12372,
+    "method": 8
+  },
+  {
+    "name": "res/layout/quickscroll_layout.xml",
+    "op": "patch",
+    "asset": "3db744eaa41e726589cb.zst",
+    "targetSize": 3356,
+    "method": 8
+  },
+  {
+    "name": "res/layout/release_row_loading_layout_large.xml",
+    "op": "patch",
+    "asset": "7583c54427a82f795421.zst",
+    "targetSize": 3116,
+    "method": 8
+  },
+  {
+    "name": "res/layout/release_row_loading_layout_small.xml",
+    "op": "patch",
+    "asset": "3d5cb3cd12f256e57449.zst",
+    "targetSize": 2256,
+    "method": 8
+  },
+  {
+    "name": "res/layout/row_text_sentence_layout.xml",
+    "op": "patch",
+    "asset": "401fc58bc5d1842d742d.zst",
+    "targetSize": 720,
+    "method": 8
+  },
+  {
+    "name": "res/layout/set_as_default_icon.xml",
+    "op": "patch",
+    "asset": "75345aabf189b88e78a2.zst",
+    "targetSize": 2328,
+    "method": 8
+  },
+  {
+    "name": "res/layout/shortcut_card.xml",
+    "op": "patch",
+    "asset": "fb0a57887023f1a6dc98.zst",
+    "targetSize": 3748,
+    "method": 8
+  },
+  {
+    "name": "res/layout/shortcuts_section.xml",
+    "op": "patch",
+    "asset": "5e77d9cc9a5eb78c32f8.zst",
+    "targetSize": 860,
+    "method": 8
+  },
+  {
+    "name": "res/layout/skeleton_card.xml",
+    "op": "patch",
+    "asset": "e94df8f88f5faaa43adf.zst",
+    "targetSize": 1780,
+    "method": 8
+  },
+  {
+    "name": "res/layout/skeleton_headerfullbleed_center.xml",
+    "op": "patch",
+    "asset": "d90b8131a2cf6bbc0c94.zst",
+    "targetSize": 860,
+    "method": 8
+  },
+  {
+    "name": "res/layout/skeleton_headerfullbleed_left.xml",
+    "op": "patch",
+    "asset": "2c4581b4162c8d27b08b.zst",
+    "targetSize": 956,
+    "method": 8
+  },
+  {
+    "name": "res/layout/skeleton_headerprofile.xml",
+    "op": "patch",
+    "asset": "954fcefc749b33fac23d.zst",
+    "targetSize": 2000,
+    "method": 8
+  },
+  {
+    "name": "res/layout/skeleton_headertext.xml",
+    "op": "patch",
+    "asset": "f6fe9dfdbfc8a0ca34fd.zst",
+    "targetSize": 860,
+    "method": 8
+  },
+  {
+    "name": "res/layout/skeleton_memberinvite.xml",
+    "op": "patch",
+    "asset": "90695caeaf81b9d75b8a.zst",
+    "targetSize": 1708,
+    "method": 8
+  },
+  {
+    "name": "res/layout/skeleton_pillbutton_large.xml",
+    "op": "patch",
+    "asset": "a83bb8bf023abac8abb8.zst",
+    "targetSize": 860,
+    "method": 8
+  },
+  {
+    "name": "res/layout/skeleton_row.xml",
+    "op": "patch",
+    "asset": "b0f14641781e9f21f856.zst",
+    "targetSize": 1588,
+    "method": 8
+  },
+  {
+    "name": "res/layout/skeleton_rowheader.xml",
+    "op": "patch",
+    "asset": "5fd55877dee31493f0e9.zst",
+    "targetSize": 924,
+    "method": 8
+  },
+  {
+    "name": "res/layout/skeleton_rowimage.xml",
+    "op": "patch",
+    "asset": "3b968818ed85e081f685.zst",
+    "targetSize": 1860,
+    "method": 8
+  },
+  {
+    "name": "res/layout/skeleton_rowimagesmall.xml",
+    "op": "patch",
+    "asset": "748fd3473e646c27ecd4.zst",
+    "targetSize": 1864,
+    "method": 8
+  },
+  {
+    "name": "res/layout/skeleton_sectionheader.xml",
+    "op": "patch",
+    "asset": "3500b532b69df60747f0.zst",
+    "targetSize": 924,
+    "method": 8
+  },
+  {
+    "name": "res/layout/skeleton_trackcloud.xml",
+    "op": "patch",
+    "asset": "b609ae428f39aaf1e2ca.zst",
+    "targetSize": 1736,
+    "method": 8
+  },
+  {
+    "name": "res/layout/sponsored_content_section_heading.xml",
+    "op": "patch",
+    "asset": "4f3148d3491ee4ad42e5.zst",
+    "targetSize": 2284,
+    "method": 8
+  },
+  {
+    "name": "res/layout/sthlm_blk_email.xml",
+    "op": "patch",
+    "asset": "37eea2f1aaaffddb7915.zst",
+    "targetSize": 3652,
+    "method": 8
+  },
+  {
+    "name": "res/layout/sthlm_blk_gender.xml",
+    "op": "patch",
+    "asset": "962a048feb1e556388d4.zst",
+    "targetSize": 3600,
+    "method": 8
+  },
+  {
+    "name": "res/layout/sthlm_blk_name_acceptance_fields.xml",
+    "op": "patch",
+    "asset": "71e5d5583b50e017c0b0.zst",
+    "targetSize": 4544,
+    "method": 8
+  },
+  {
+    "name": "res/layout/subaccount_card.xml",
+    "op": "patch",
+    "asset": "bc423b0a77b796a3dd96.zst",
+    "targetSize": 5580,
+    "method": 8
+  },
+  {
+    "name": "res/layout/too_may_attempts_dialog.xml",
+    "op": "patch",
+    "asset": "ad99b431552bd1c79b6c.zst",
+    "targetSize": 3848,
+    "method": 8
+  },
+  {
+    "name": "res/layout/viral_badge_layout.xml",
+    "op": "patch",
+    "asset": "3d1a7abd047a900afd77.zst",
+    "targetSize": 1748,
+    "method": 8
+  },
+  {
+    "name": "res/layout/waze_banner.xml",
+    "op": "patch",
+    "asset": "1262d44dc9d040451a18.zst",
+    "targetSize": 2704,
+    "method": 8
+  },
+  {
+    "name": "res/layout-land/marquee_overlay_view.xml",
+    "op": "patch",
+    "asset": "41440db7800bcf2220a1.zst",
+    "targetSize": 4224,
+    "method": 8
+  },
+  {
+    "name": "resources.arsc",
+    "op": "patch_chunks",
+    "chunks": [
+      {
+        "srcStart": 0,
+        "srcEnd": 10485760,
+        "targetSize": 8388608,
+        "asset": "7516ef444ee85824abee.zst"
+      },
+      {
+        "srcStart": 6291456,
+        "srcEnd": 18874368,
+        "targetSize": 8388608,
+        "asset": "7dbd7a74d58922efb2fa.zst"
+      },
+      {
+        "srcStart": 14680064,
+        "srcEnd": 27262976,
+        "targetSize": 8388608,
+        "asset": "d8a49cb80785169b8421.zst"
+      },
+      {
+        "srcStart": 23068672,
+        "srcEnd": 35651584,
+        "targetSize": 8388608,
+        "asset": "2965ff537812e84db515.zst"
+      },
+      {
+        "srcStart": 31457280,
+        "srcEnd": 44040192,
+        "targetSize": 8388608,
+        "asset": "16afacc21ad6cbd772e8.zst"
+      },
+      {
+        "srcStart": 39845888,
+        "srcEnd": 48027024,
+        "targetSize": 4610792,
+        "asset": "597322dc13b68713773e.zst"
+      }
+    ],
+    "targetSize": 46553832,
+    "method": 0
+  },
+  {
+    "name": "classes14.dex",
+    "op": "add",
+    "asset": "a383b6bafd0c58f3c1cf.full",
+    "targetSize": 2900,
+    "method": 8
+  }
+]
