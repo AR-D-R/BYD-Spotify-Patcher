@@ -37,8 +37,8 @@ The old Windows/Python patcher is still preserved as release/tag `v0.6` and on t
 
 ## Supported Spotify versions
 
-| Profile | Supported version |
-|---|---|---|
+| Profile | Supported version | APKMirror | Notes |
+|---|---|---|---|
 | Spotify 9.1 | `9.1.78.2215` | [Download APK](https://www.apkmirror.com/apk/spotify-ab/spotify-music-podcasts/spotify-music-and-podcasts-9-1-78-2215-release/spotify-music-and-podcasts-9-1-78-2215-2-android-apk-download/) | This is the version with the new UI. It seems to run quite a bit heavier and slower, so it might not be the best experience on older systems. |
 | Spotify 8.9 | `8.9.76.538` | [Download APK](https://www.apkmirror.com/apk/spotify-ab/spotify/spotify-music-and-podcasts-8-9-76-538-release/spotify-music-and-podcasts-8-9-76-538-2-android-apk-download/) | This one still has most of the bells and whistles and has a much quicker and lighter interface. |
 
