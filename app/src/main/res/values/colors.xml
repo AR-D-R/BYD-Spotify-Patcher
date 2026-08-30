@@ -1,0 +1,10 @@
+<resources>
+    <color name="brand">#1DB954</color>
+    <color name="brand_dark">#168943</color>
+    <color name="surface">#111111</color>
+    <color name="surface_card">#1B1B1B</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#B3B3B3</color>
+    <color name="divider">#303030</color>
+    <color name="progress_surface">#14241A</color>
+</resources>

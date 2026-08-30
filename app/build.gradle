@@ -1,0 +1,117 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.bydspotifymanager.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.bydspotifymanager.app'
+        minSdk 28
+        targetSdk 35
+        versionCode 27
+        versionName '1.0'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
+    // dexLhsHook generates build/generated/lhsHookAssets/lhs_hook/classes.dex.
+    // The Manager then injects that tiny standalone DEX as Spotify classes15.dex
+    // only when the LHS player option is selected.
+    sourceSets {
+        main {
+            assets.srcDir("$buildDir/generated/lhsHookAssets")
+        }
+    }
+}
+
+def hookSrcDir = file("$projectDir/hooksrc")
+def hookClassesDir = layout.buildDirectory.dir('lhsHook/classes')
+def hookJarFile = layout.buildDirectory.file('lhsHook/lhs_hook.jar')
+def hookAssetsDir = layout.buildDirectory.dir('generated/lhsHookAssets/lhs_hook')
+
+tasks.register('compileLhsHook', JavaCompile) {
+    source = fileTree(hookSrcDir) { include '**/*.java' }
+    classpath = files(new File(android.sdkDirectory, 'platforms/android-35/android.jar'))
+    destinationDirectory.set(hookClassesDir)
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+    options.encoding = 'UTF-8'
+}
+
+tasks.register('jarLhsHook', Jar) {
+    dependsOn 'compileLhsHook'
+    archiveFileName.set('lhs_hook.jar')
+    destinationDirectory.set(layout.buildDirectory.dir('lhsHook'))
+    from(hookClassesDir)
+}
+
+tasks.register('dexLhsHook', Exec) {
+    dependsOn 'jarLhsHook'
+    inputs.file(hookJarFile)
+    outputs.file(layout.buildDirectory.file('generated/lhsHookAssets/lhs_hook/classes.dex'))
+    doFirst {
+        File sdk = android.sdkDirectory
+        boolean isWindows = System.getProperty('os.name').toLowerCase().contains('win')
+        String d8Name = isWindows ? 'd8.bat' : 'd8'
+        File buildToolsRoot = new File(sdk, 'build-tools')
+        File[] candidates = buildToolsRoot.listFiles({ File f -> new File(f, d8Name).isFile() } as FileFilter)
+        if (candidates == null || candidates.length == 0) {
+            throw new GradleException("Android SDK build-tools with ${d8Name} were not found under ${buildToolsRoot}")
+        }
+        Arrays.sort(candidates, { File a, File b -> a.name <=> b.name } as Comparator<File>)
+        File d8 = new File(candidates[candidates.length - 1], d8Name)
+        File outDir = hookAssetsDir.get().asFile
+        if (outDir.exists() && !outDir.deleteDir()) {
+            throw new GradleException("Could not clean LHS hook output directory: ${outDir}")
+        }
+        outDir.mkdirs()
+        File androidJar = new File(sdk, 'platforms/android-35/android.jar')
+        if (!androidJar.isFile()) {
+            throw new GradleException("Android 35 platform is required to build the LHS hook: ${androidJar}")
+        }
+        if (isWindows) {
+            commandLine 'cmd', '/c', d8.absolutePath,
+                    '--release', '--min-api', '28', '--lib', androidJar.absolutePath,
+                    '--output', outDir.absolutePath, hookJarFile.get().asFile.absolutePath
+        } else {
+            commandLine d8.absolutePath,
+                    '--release', '--min-api', '28', '--lib', androidJar.absolutePath,
+                    '--output', outDir.absolutePath, hookJarFile.get().asFile.absolutePath
+        }
+    }
+    doLast {
+        File outDir = hookAssetsDir.get().asFile
+        File dex = new File(outDir, 'classes.dex')
+        if (!dex.isFile() || dex.length() < 256) {
+            throw new GradleException('LHS runtime hook DEX was not generated')
+        }
+    }
+}
+
+tasks.named('preBuild').configure { dependsOn 'dexLhsHook' }
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'androidx.activity:activity:1.10.1'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'com.android.tools.build:apksig:8.13.2'
+    implementation 'com.github.luben:zstd-jni:1.5.6-9@aar'
+}

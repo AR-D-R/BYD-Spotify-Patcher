@@ -1,29 +1,23 @@
-# Python
-__pycache__/
-*.pyc
-*.pyo
+# Android Studio / Gradle
+.gradle/
+.idea/
+.vs/
+local.properties
+**/build/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
 
-# PyInstaller
-build/
-dist/
-*.spec
-
-# Android APKs
-*.apk
-*.apks
-*.xapk
-
-# Signing keys
+# Signing keys - NEVER COMMIT
 *.jks
 *.keystore
-*.p12
-*.pfx
+keystore.properties
 
-# Temporary files
-*.tmp
-*.log
+# Built Android packages
+*.apk
+*.aab
 
-# IDE
-.vscode/
-.idea/.vs/
-.vs/
+# Temporary / OS files
+Thumbs.db
+.DS_Store
