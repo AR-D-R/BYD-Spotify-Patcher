@@ -13,7 +13,7 @@ The idea was simply to make the whole process easier to use and maintain.
 Compared with the previous Windows version, v1.0 adds:
 
 - Android-native patching and installation.
-- Support for both Spotify `9.1.78.2215` and `8.9.76.538`.
+- Support for both Spotify `9.1.78.2215` and `8.9.76.538 (I recommend to use this one because the new 9.1 UI is laggy)`.
 - Separate Spotify 9.1 and Spotify 8.9 settings inside the same Manager.
 - Primary and Secondary installation slots.
 - Direct Spotify 8.9 → 9.1 upgrades without uninstalling the slot first.
